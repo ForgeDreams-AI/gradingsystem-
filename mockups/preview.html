@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Grading System — UI/UX Outline (Preview)</title>
+    <!-- Tailwind (CDN, fine for a throwaway prototype) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- React + ReactDOM + Babel (so we can run raw JSX in the browser) -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <style>
+      body { margin: 0; }
+      #fallback { font-family: system-ui, sans-serif; }
+    </style>
+  </head>
+  <body>
+    <div id="root">
+      <div id="fallback" style="padding:2rem;color:#475569;text-align:center">
+        Loading prototype… If this message stays, you opened the file directly
+        (file://). Browsers block local fetch — serve the folder instead, e.g.
+        <br /><br />
+        <code style="background:#e2e8f0;padding:.3rem .6rem;border-radius:.4rem">
+          cd mockups &amp;&amp; python3 -m http.server 8000
+        </code>
+        <br /><br />then open
+        <code style="background:#e2e8f0;padding:.3rem .6rem;border-radius:.4rem">http://localhost:8000/preview.html</code>.
+        <br />(On GitHub Pages it just works.)
+      </div>
+    </div>
+
+    <script>
+      // Load the JSX component file, strip ES module import/export so it can run
+      // as a plain in-browser Babel script (React/ReactDOM are globals here).
+      fetch("./GradingSystemMockup.jsx")
+        .then((r) => {
+          if (!r.ok) throw new Error("fetch failed");
+          return r.text();
+        })
+        .then((src) => {
+          const transformed = src
+            .replace(/import\s+React.*?;/s, "const { useState } = React;")
+            .replace(/export\s+default\s+function\s+GradingSystemMockup/, "function GradingSystemMockup");
+
+          const script = document.createElement("script");
+          script.type = "text/babel";
+          script.textContent =
+            transformed +
+            "\nReactDOM.createRoot(document.getElementById('root')).render(<GradingSystemMockup />);";
+          document.body.appendChild(script);
+          // Tell Babel to compile the script we just injected.
+          window.Babel.transformScriptTags();
+        })
+        .catch(() => {
+          /* fallback message already shown */
+        });
+    </script>
+  </body>
+</html>

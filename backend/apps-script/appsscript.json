@@ -1,0 +1,12 @@
+{
+  "//": "Apps Script project manifest. The timeZone MUST stay America/Phoenix so the daily report trigger fires at the right local time (Arizona has no daylight saving).",
+  "timeZone": "America/Phoenix",
+  "dependencies": {},
+  "exceptionLogging": "STACKDRIVER",
+  "runtimeVersion": "V8",
+  "webapp": {
+    "//": "executeAs USER_DEPLOYING = code runs as YOU (so it can read the Sheet + send mail). access ANYONE_ANONYMOUS = the GitHub Pages app can call it without a Google login (the app uses grader PINs for access).",
+    "executeAs": "USER_DEPLOYING",
+    "access": "ANYONE_ANONYMOUS"
+  }
+}

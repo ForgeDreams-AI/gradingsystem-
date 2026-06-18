@@ -292,7 +292,7 @@ function ChartScreen({ onBack, onNext, sides }) {
   const [activeEvent, setActiveEvent] = useState("e1");
 
   const placedIds = Object.values(slots).filter(Boolean);
-  const pool = ROSTER.filter((p) => !placedIds.includes(p));
+  const pool = ROSTER.filter((p) => !placedIds.includes(p.id));
   const activeEv = events.find((e) => e.id === activeEvent);
 
   const place = (pid) =>
@@ -332,16 +332,24 @@ function ChartScreen({ onBack, onNext, sides }) {
         <div className="mt-2 grid grid-cols-2 gap-2">
           {events.map((ev) => (
             <div key={ev.id}
-              className={`flex h-24 items-center justify-center rounded-xl border-2 border-dashed p-2 text-center ${
+              className={`relative flex h-24 items-center justify-center rounded-xl border-2 border-dashed p-2 text-center ${
                 slots[ev.id] ? "border-green-500 bg-green-50" : "border-slate-300 bg-white"
               }`}>
               {slots[ev.id] ? (
-                <button onClick={() => setSlots((s) => ({ ...s, [ev.id]: null }))} className="leading-tight">
-                  <div className="font-bold text-slate-800">{nameOf(slots[ev.id])}</div>
-                  <div className="text-[10px] text-slate-400">{compOf(slots[ev.id])}</div>
-                  {sides[ev.id] && <div className="text-[10px] text-slate-500">{sides[ev.id]} side</div>}
-                  <div className="text-[10px] text-red-500">tap to remove</div>
-                </button>
+                <>
+                  {/* explicit ✕ remove button */}
+                  <button onClick={() => setSlots((s) => ({ ...s, [ev.id]: null }))}
+                    className="absolute -right-2 -top-2 flex h-6 w-6 items-center justify-center rounded-full bg-red-600 text-xs font-bold text-white shadow">
+                    ✕
+                  </button>
+                  {/* tapping the slot also removes */}
+                  <button onClick={() => setSlots((s) => ({ ...s, [ev.id]: null }))} className="leading-tight">
+                    <div className="font-bold text-slate-800">{nameOf(slots[ev.id])}</div>
+                    <div className="text-[10px] text-slate-400">{compOf(slots[ev.id])}</div>
+                    {sides[ev.id] && <div className="text-[10px] text-slate-500">{sides[ev.id]} side</div>}
+                    <div className="text-[10px] text-red-500">✕ or tap to remove</div>
+                  </button>
+                </>
               ) : (
                 <span className="text-xs text-slate-400">empty</span>
               )}
@@ -448,25 +456,31 @@ function GradeScreen({ onBack, onNext }) {
   );
 }
 
-function SwapBarScreen({ onBack, onNext }) {
+/* Shown after the LAST group is graded — offer rounds instead of a new session. */
+function RoundEndScreen({ onBack, onNext }) {
   return (
     <>
-      <TopBar left={<button onClick={onBack}>‹</button>} center="Between Groups" right="2/4" />
+      <TopBar left={<button onClick={onBack}>‹</button>} center="Round Complete" right="4/4" />
       <div className="flex flex-1 flex-col p-4">
-        <div className="rounded-2xl bg-green-50 border-2 border-green-200 p-4 text-center">
+        <div className="rounded-2xl border-2 border-green-200 bg-green-50 p-4 text-center">
           <div className="text-3xl">✓</div>
-          <div className="font-bold text-slate-800">Group 1 saved</div>
-          <div className="text-xs text-slate-500">2 immutable attempt rows written (with side).</div>
+          <div className="font-bold text-slate-800">All 4 groups graded</div>
+          <div className="text-xs text-slate-500">8 immutable attempt rows saved this round.</div>
         </div>
-        <div className="mt-4 text-xs font-semibold uppercase tracking-wide text-slate-400">Control bar</div>
+
+        <div className="mt-4 text-xs font-semibold uppercase tracking-wide text-slate-400">What next?</div>
         <div className="mt-2 space-y-3">
-          <BigButton color="ghost" onClick={() => {}}>⇄ Swap a Company</BigButton>
-          <p className="px-1 text-[11px] text-slate-400">Saved results stay untouched. The swapped company's recruits are cleared from not-yet-graded slots so you can refill from the new roster.</p>
-          <BigButton color="green" onClick={onNext}>Next: Group 2 of 4 →</BigButton>
+          <BigButton color="green" onClick={onNext}>🔁 Run again — same roles</BigButton>
+          <p className="px-1 text-[11px] text-slate-400">Same people, same columns. Grades become new attempts.</p>
+
+          <BigButton color="slate" onClick={onNext}>⇄ Run again — swap roles</BigButton>
+          <p className="px-1 text-[11px] text-slate-400">Auto-flips everyone (Quick Attack ⇄ Plug). Plug stays <b>Engineer</b> side.</p>
+
+          <BigButton color="ghost" onClick={() => {}}>■ End session</BigButton>
         </div>
-        <div className="mt-auto">
-          <div className="h-2 w-full overflow-hidden rounded-full bg-slate-200"><div className="h-full w-1/4 bg-slate-900" /></div>
-          <div className="mt-1 text-center text-xs text-slate-400">Group 1 of 4 complete</div>
+
+        <div className="mt-auto rounded-lg bg-slate-100 p-2 text-center text-[11px] text-slate-500">
+          Next round opens on the chart first — ✕ anyone who left and drop in a replacement.
         </div>
       </div>
     </>
@@ -660,7 +674,7 @@ export default function GradingSystemMockup() {
       case "company": return <CompanyScreen onBack={back} onNext={next} />;
       case "chart": return <ChartScreen onBack={back} onNext={next} sides={sides} />;
       case "grade": return <GradeScreen onBack={back} onNext={next} />;
-      case "swap": return <SwapBarScreen onBack={back} onNext={() => setView("chart")} />;
+      case "swap": return <RoundEndScreen onBack={back} onNext={() => setView("chart")} />;
       case "admin": return <AdminScreen onBack={() => setView("pin")} />;
       case "report": return <ReportScreen onBack={() => setView("pin")} />;
       default: return null;

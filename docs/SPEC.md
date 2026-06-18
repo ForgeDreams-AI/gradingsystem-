@@ -32,9 +32,13 @@
 - Both recruits graded → **Submit** writes immutable attempt rows.
 
 ## Attempts & Scoring
-- **Immutable attempts**: each graded attempt locks; a re-grade adds a **new** attempt row (full history kept; e.g. 3 attempts = 2 pass + 1 fail).
+- **Immutable attempts**: each graded attempt locks; a re-grade adds a **new** attempt row (full history kept; e.g. 3 attempts = 2 pass + 1 fail). **No max cap.**
 - **Score = passes ÷ total attempts, per event (and per side).** Memo counts as **Fail** in the percentage.
-- **Alert:** if a recruit has **< 3 attempts** on any event during the week → alert that recruit's **company captain**.
+- **Low-attempts threshold:** **editable** (admin), **defaults to 3**. If a recruit is below it on an event for the week, it's flagged.
+- **When the low-attempts flag appears (by day of week):**
+  - **Recruit reports:** only on **Wednesday & Thursday**.
+  - **Captain reports:** **Tuesday, Wednesday & Thursday**.
+  - (Day-of-week visibility is configurable; these are the starting values.)
 
 ## Mid-session company swap
 - Saved results are **never touched** (immutable).
@@ -68,12 +72,15 @@ Each new round drops the grader back on the chart first, so **if someone left, j
 - **Time:** 1:00 PM **Arizona (America/Phoenix, no DST)**.
 - **Cadence:** only on days new data was entered (skip empty). Organized **by day**, with running **daily + weekly totals**, then saved.
 - **Format:** HTML email **+ PDF per area**. Color-coded grades; per-event passes/attempts + %; side breakdowns + combined.
-- **Color bands + thresholds (admin-configurable):** color set, the **% range each color represents**, and **separate daily vs weekly minimum %** (same bands).
+- **Color bands:** **fixed 3 bands — Green / Yellow / Red.** The **% cutoffs are editable** (admin); the three colors themselves are fixed.
+- **Thresholds:** **one passing-% set applies org-wide** (same for every topic/event), with **separate daily vs weekly minimum %** (same bands). Passing % is **not** per-topic.
+- **Per-event fail reasons:** each event can have its **own quick-note reason list** (the *reasons* differ per event even though the passing % does not).
 - **Editable legend** (Pass / Fail / Memo meanings) printed on **every** report PDF.
 - **Recipients / scope:**
   - **Recruit** → their own report.
   - **Captain** → one report **per company** they own (every recruit in it).
   - **Higher-up** → **all companies** department-wide.
+- **Captain & higher-up "by-attempts" view:** for **every event**, list each person **by attempt count**, with each entry **color-coded by their pass-rate band (G/Y/R)** — so they can spot at a glance who needs more reps (low attempts) and who is struggling (low %).
 - Idempotent sends; log every send with status.
 
 ## Tenancy

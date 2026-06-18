@@ -97,6 +97,31 @@ const REPORT_RECRUIT = {
 
 /* ------------------------------- HELPERS ----------------------------------- */
 
+/* Extra mock data used by the Admin panel (these mirror the backend tabs). */
+const CAPTAINS = [
+  { id: "cap1", name: "Capt. Reyes", email: "reyes@dept.gov" },
+  { id: "cap2", name: "Capt. Olsen", email: "olsen@dept.gov" },
+];
+const HIGHERUPS = [{ id: "h1", name: "Chief Doyle", email: "doyle@dept.gov" }];
+const GRADERS = [
+  { id: "g1", name: "Capt. Reyes", pin: "1234" },
+  { id: "g2", name: "Lt. Park", pin: "••••" },
+];
+const REASONS_SCOPED = [
+  { label: "PPE not donned", scope: "Global" },
+  { label: "Out of sequence", scope: "Global" },
+  { label: "Slow to charge line", scope: "Quick Attack" },
+  { label: "Wrong hydrant wrap", scope: "Plug" },
+];
+const SCHEDULE = {
+  time: "1:00 PM",
+  timezone: "Arizona (America/Phoenix)",
+  sendDays: "Every day (skips empty days)",
+  recruitFlagDays: "Wed, Thu",
+  captainFlagDays: "Tue, Wed, Thu",
+};
+
+
 const pct = (p, a) => (a === 0 ? 0 : Math.round((p / a) * 100));
 const bandFor = (v) => COLOR_BANDS.find((b) => v >= b.min) || COLOR_BANDS[COLOR_BANDS.length - 1];
 
@@ -496,30 +521,152 @@ function Section({ title, children }) {
   );
 }
 
+/* ---------- small reusable admin building blocks ---------- */
+
+// An editable record row: title + subtitle, with pencil/✕ actions and an optional tag.
+function ARow({ title, subtitle, badge, badgeColor }) {
+  return (
+    <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-white p-3">
+      <div className="min-w-0">
+        <div className="truncate font-bold text-slate-800">{title}</div>
+        {subtitle && <div className="truncate text-[11px] text-slate-400">{subtitle}</div>}
+      </div>
+      <div className="flex shrink-0 items-center gap-2">
+        {badge && (
+          <span className="rounded-full px-2 py-0.5 text-[10px] font-bold"
+            style={badgeColor ? { background: badgeColor, color: "#fff" } : { background: "#e2e8f0", color: "#475569" }}>
+            {badge}
+          </span>
+        )}
+        <button className="text-slate-400">✎</button>
+        <button className="text-red-500">✕</button>
+      </div>
+    </div>
+  );
+}
+
+function AddRow({ label }) {
+  return (
+    <button className="w-full rounded-xl border-2 border-dashed border-slate-300 py-3 text-sm font-semibold text-slate-500">
+      + {label}
+    </button>
+  );
+}
+
+// A single editable setting: label, current value, hint, and an Edit link.
+function FieldCard({ label, value, hint }) {
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white p-3">
+      <div className="flex items-center justify-between">
+        <div className="text-[11px] font-bold uppercase tracking-wide text-slate-400">{label}</div>
+        <button className="text-xs font-semibold text-sky-600">Edit</button>
+      </div>
+      <div className="mt-1 font-semibold text-slate-800">{value}</div>
+      {hint && <div className="text-[11px] text-slate-400">{hint}</div>}
+    </div>
+  );
+}
+
+/* ---------- the Admin panel: a menu + one sub-page per category ---------- */
+
+const ADMIN_SECTIONS = [
+  ["companies", "🏢", "Companies", "3 companies"],
+  ["captains", "🎖️", "Captains", "2 captains"],
+  ["higherups", "⭐", "Higher-ups", "1 person"],
+  ["recruits", "👤", "Recruits", "6 recruits"],
+  ["topics", "📋", "Topics & Events", "1 topic · 2 events"],
+  ["reasons", "📝", "Fail Reasons", "4 reasons"],
+  ["graders", "🔢", "Graders & PINs", "2 graders"],
+  ["scoring", "🎨", "Scoring & Colors", "Green / Yellow / Red"],
+  ["schedule", "⏰", "Report Schedule", "1 PM Arizona"],
+  ["legend", "📖", "Legend Text", "Pass / Fail / Memo"],
+];
+
 function AdminScreen({ onBack }) {
+  const [section, setSection] = useState(null); // null = menu
+
+  // ---- the menu ----
+  if (!section) {
+    return (
+      <>
+        <TopBar left={<button onClick={onBack}>‹</button>} center="Admin · Setup" />
+        <div className="flex-1 overflow-auto p-3">
+          <p className="mb-2 px-1 text-[11px] text-slate-400">
+            Everything the app uses lives here — nothing is hard-coded. Tap a category to edit.
+          </p>
+          <div className="space-y-2">
+            {ADMIN_SECTIONS.map(([key, icon, title, sub]) => (
+              <button key={key} onClick={() => setSection(key)}
+                className="flex w-full items-center gap-3 rounded-xl border border-slate-200 bg-white p-3 text-left active:scale-[0.99]">
+                <span className="text-xl">{icon}</span>
+                <span className="flex-1">
+                  <span className="block font-bold text-slate-800">{title}</span>
+                  <span className="block text-[11px] text-slate-400">{sub}</span>
+                </span>
+                <span className="text-slate-300">›</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      </>
+    );
+  }
+
+  const meta = ADMIN_SECTIONS.find((s) => s[0] === section);
+
   return (
     <>
-      <TopBar left={<button onClick={onBack}>‹</button>} center="Admin · Config" />
-      <div className="flex-1 space-y-4 overflow-auto p-4 text-sm">
-        <p className="text-xs text-slate-400">Everything below is data-driven & editable in-app.</p>
+      <TopBar left={<button onClick={() => setSection(null)}>‹</button>} center={meta[2]} />
+      <div className="flex-1 space-y-3 overflow-auto p-3 text-sm">
+        {section === "companies" && (
+          <>
+            {COMPANIES.map((c) => <ARow key={c.id} title={c.name} subtitle={"Captain: " + c.captain} />)}
+            <AddRow label="Add company" />
+          </>
+        )}
 
-        {/* TOPIC / EVENT BUILDER */}
-        <Section title="Topic & Event Builder">
+        {section === "captains" && (
+          <>
+            {CAPTAINS.map((c) => <ARow key={c.id} title={c.name} subtitle={c.email} />)}
+            <AddRow label="Add captain" />
+            <p className="px-1 text-[11px] text-slate-400">A captain is just a name + email. One captain can own several companies.</p>
+          </>
+        )}
+
+        {section === "higherups" && (
+          <>
+            {HIGHERUPS.map((h) => <ARow key={h.id} title={h.name} subtitle={h.email} />)}
+            <AddRow label="Add higher-up" />
+            <p className="px-1 text-[11px] text-slate-400">Higher-ups get an emailed report covering all companies.</p>
+          </>
+        )}
+
+        {section === "recruits" && (
+          <>
+            {COMPANIES.map((co) => (
+              <div key={co.id}>
+                <div className="mb-1 mt-1 text-[11px] font-bold uppercase tracking-wide text-slate-400">{co.name}</div>
+                {ROSTER.filter((r) => r.companyId === co.id).map((r) => (
+                  <div key={r.id} className="mb-2"><ARow title={r.name} subtitle="work email · active" badge="active" badgeColor="#16a34a" /></div>
+                ))}
+              </div>
+            ))}
+            <AddRow label="Add recruit" />
+          </>
+        )}
+
+        {section === "topics" && (
           <div className="rounded-xl border border-slate-200 bg-white p-3">
             <div className="flex items-center justify-between">
               <div className="font-bold text-slate-800">Topic: Quick Attack / Plug</div>
-              <span className="text-xs text-slate-400">✎ edit</span>
+              <span className="text-xs text-sky-600">✎ edit</span>
             </div>
-
-            {/* Event 1 */}
             <div className="mt-2 rounded-lg bg-slate-50 p-2">
               <div className="flex items-center justify-between">
                 <span className="font-semibold text-slate-700">Event · Quick Attack</span>
                 <span className="rounded bg-slate-200 px-1.5 py-0.5 text-[10px] font-bold text-slate-600">side: not required</span>
               </div>
             </div>
-
-            {/* Event 2 with side options */}
             <div className="mt-2 rounded-lg bg-slate-50 p-2">
               <div className="flex items-center justify-between">
                 <span className="font-semibold text-slate-700">Event · Plug</span>
@@ -533,37 +680,78 @@ function AdminScreen({ onBack }) {
               </div>
               <div className="mt-2 text-[11px] text-slate-400">Scoring: each side scored separately <b>and</b> combined.</div>
             </div>
-
             <button className="mt-3 w-full rounded-lg border-2 border-dashed border-slate-300 py-2 text-xs font-semibold text-slate-500">+ add event / column</button>
+            <button className="mt-2 w-full rounded-lg border-2 border-dashed border-slate-300 py-2 text-xs font-semibold text-slate-500">+ add topic</button>
           </div>
-        </Section>
+        )}
 
-        <Section title="Color Bands & Thresholds">
-          {COLOR_BANDS.map((b, i) => (
-            <div key={i} className="flex items-center justify-between rounded-lg bg-white p-2 shadow-sm">
-              <span className="flex items-center gap-2"><span className="h-4 w-4 rounded" style={{ background: b.color }} />{b.label}</span>
-              <span className="font-mono text-xs text-slate-500">≥ {b.min}%</span>
-            </div>
-          ))}
-          <div className="mt-1 flex gap-2 text-xs">
-            <span className="rounded bg-slate-100 px-2 py-1">Daily min: {THRESHOLDS.daily}%</span>
-            <span className="rounded bg-slate-100 px-2 py-1">Weekly min: {THRESHOLDS.weekly}%</span>
-          </div>
-        </Section>
-
-        <Section title="Legend (prints on every PDF)">
-          {Object.entries(LEGEND).map(([k, v]) => (
-            <div key={k} className="rounded-lg bg-white p-2 text-xs shadow-sm"><span className="font-bold uppercase">{k}: </span>{v}</div>
-          ))}
-        </Section>
-
-        <Section title="Other editable entities">
-          <div className="flex flex-wrap gap-2">
-            {["Companies", "Captains", "Higher-ups", "Recruits", "Fail reasons", "Grader PINs", "Report time / TZ"].map((x) => (
-              <span key={x} className="rounded-full bg-slate-800 px-3 py-1 text-xs text-white">{x}</span>
+        {section === "reasons" && (
+          <>
+            {REASONS_SCOPED.map((r, i) => (
+              <ARow key={i} title={r.label} badge={r.scope} badgeColor={r.scope === "Global" ? "#475569" : "#0ea5e9"} />
             ))}
-          </div>
-        </Section>
+            <AddRow label="Add reason" />
+            <p className="px-1 text-[11px] text-slate-400">A reason can be Global (any event) or tied to one event. Graders can also type “Other”.</p>
+          </>
+        )}
+
+        {section === "graders" && (
+          <>
+            {GRADERS.map((g) => <ARow key={g.id} title={g.name} subtitle={"PIN: " + g.pin} />)}
+            <AddRow label="Add grader" />
+            <p className="px-1 text-[11px] text-slate-400">Graders are the only people who sign in. Each has a private PIN.</p>
+          </>
+        )}
+
+        {section === "scoring" && (
+          <>
+            <div className="text-[11px] font-bold uppercase tracking-wide text-slate-400">Color bands (fixed colors, editable %)</div>
+            {COLOR_BANDS.map((b, i) => (
+              <div key={i} className="flex items-center justify-between rounded-xl border border-slate-200 bg-white p-3">
+                <span className="flex items-center gap-2">
+                  <span className="h-5 w-5 rounded" style={{ background: b.color }} />
+                  <span className="font-semibold text-slate-700">{b.label}</span>
+                </span>
+                <span className="flex items-center gap-1">
+                  <span className="rounded-lg border border-slate-300 px-2 py-1 font-mono text-xs">≥ {b.min}%</span>
+                  <button className="text-xs font-semibold text-sky-600">Edit</button>
+                </span>
+              </div>
+            ))}
+            <FieldCard label="Daily minimum %" value={THRESHOLDS.daily + "%"} hint="Recruit should stay at/above this each day" />
+            <FieldCard label="Weekly minimum %" value={THRESHOLDS.weekly + "%"} hint="And at/above this for the week" />
+            <FieldCard label="A MEMO counts as" value="Fail" hint="Options: fail · pass · neutral" />
+            <FieldCard label="Low-attempts alert" value="Fewer than 3 attempts" hint="Flags recruits who need more reps" />
+          </>
+        )}
+
+        {section === "schedule" && (
+          <>
+            <FieldCard label="Send time" value={SCHEDULE.time} />
+            <FieldCard label="Time zone" value={SCHEDULE.timezone} />
+            <FieldCard label="Send days" value={SCHEDULE.sendDays} />
+            <FieldCard label="Low-attempt flag — recruit reports" value={SCHEDULE.recruitFlagDays} hint="Which days the flag appears for recruits" />
+            <FieldCard label="Low-attempt flag — captain reports" value={SCHEDULE.captainFlagDays} hint="Which days the flag appears for captains" />
+          </>
+        )}
+
+        {section === "legend" && (
+          <>
+            <p className="px-1 text-[11px] text-slate-400">This text prints on every report PDF.</p>
+            {Object.entries(LEGEND).map(([k, v]) => (
+              <div key={k} className="rounded-xl border border-slate-200 bg-white p-3">
+                <div className="flex items-center justify-between">
+                  <span className="flex items-center gap-2">
+                    <span className="h-3 w-3 rounded-full" style={{ background: k === "pass" ? "#16a34a" : k === "fail" ? "#dc2626" : "#f59e0b" }} />
+                    <span className="text-[11px] font-bold uppercase text-slate-500">{k}</span>
+                  </span>
+                  <button className="text-xs font-semibold text-sky-600">Edit</button>
+                </div>
+                <div className="mt-1 text-xs text-slate-600">{v}</div>
+              </div>
+            ))}
+          </>
+        )}
       </div>
     </>
   );

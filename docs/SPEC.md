@@ -40,6 +40,25 @@
 - Saved results are **never touched** (immutable).
 - Swapped-out company's recruits are **cleared from not-yet-graded slots**; refill from the new company's roster.
 
+## Live session changes (people/companies move)
+Guiding rule: **the permanent record is per-recruit, immutable, written on Submit. The chart is only a staging area** — nothing in the chart is data until Submit.
+
+- **Move/remove interaction:** all tapping, no dragging.
+  - **Put in:** tap a name in the pool → drops into the lit-up (active) column.
+  - **Remove/move:** each filled slot shows an **✕**; tapping the slot (or its ✕) pops the recruit back to the pool. (**✕ + tap-slot**, both work.)
+  - **Swap two recruits:** tap both out, tap each back into the other column.
+- **A company leaves mid-session:** already-graded recruits keep their saved attempts (stamped `company_at_time`) and still appear on reports; the company's recruits are removed from the pool and from not-yet-graded slots (slots go empty). Logged as `company removed @ timestamp`.
+- **People swap spots:** free before Submit (scores follow the **recruit**, not the slot/chair). After Submit, that attempt is frozen; moving them only affects their next attempt (new immutable row, attempt N+1).
+- **Safeguard:** removing/swapping someone out of a **started-but-not-submitted** group prompts a quick "discard in-progress taps?" confirm (those taps aren't saved until Submit).
+
+## End of session — rounds
+When the **last group** is graded, do **not** force a new session. Show three buttons:
+1. **Run again — same roles:** same people, same columns; grade another round (new attempts).
+2. **Run again — swap roles:** **auto-flip everyone** to the opposite column (Quick Attack ⇄ Plug). The session's locked side (e.g. Plug = Engineer) **stays the same** — only *who* is on each column flips.
+3. **End session.**
+
+Each new round drops the grader back on the chart first, so **if someone left, just ✕ them and drop in a replacement** before grading. People leaving is always recoverable via swap.
+
 ## Reliability (field requirement)
 - **Immediate persistence:** every Submit posts to the Sheet right away (append-only) — a recorded result is never lost.
 - **Offline-first:** submits also queue locally on the iPad (IndexedDB/localStorage). Grading continues with no service; queued submits **auto-sync on reconnect** with **retry + idempotency/de-dupe** (no double-posting). Show a pending/synced indicator.

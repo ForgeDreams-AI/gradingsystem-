@@ -316,10 +316,11 @@ function sortedRoster(config, companyIds) {
  * then walks every queued group. Available list is auto-sorted A–Z (graders
  * don't set the order). The # is the engine company.
  */
-function ChartScreen({ config, topic, sides, companyIds, pool, onBack, onStartGrading }) {
+function ChartScreen({ config, topic, sides, companyIds, pool, initialQueue, gradedIds, resuming, onBack, onStartGrading }) {
   const events = eventsForTopic(config, topic.topic_id);
+  const alreadyGraded = gradedIds || [];
 
-  const [queue, setQueue] = useState([]);  // groups already built (each: array of column assignments)
+  const [queue, setQueue] = useState(initialQueue || []); // preloaded when editing mid-session
   const [slots, setSlots] = useState({});  // the group currently being built
   const [active, setActive] = useState(events[0] ? events[0].event_id : null);
 
@@ -369,9 +370,9 @@ function ChartScreen({ config, topic, sides, companyIds, pool, onBack, onStartGr
 
   return (
     <>
-      <TopBar left={<button onClick={onBack}>‹</button>} center="Build Groups" right={totalGroups + " grp"} />
+      <TopBar left={<button onClick={onBack}>‹</button>} center={resuming ? "Edit Groups" : "Build Groups"} right={totalGroups + " grp"} />
       <div className="flex h-full flex-col overflow-hidden p-3">
-        <p className="mb-2 text-[11px] text-slate-400">Tap a column, then a name. <b>Add group</b> to queue it &amp; start the next. List sorted A–Z · # = engine.</p>
+        <p className="mb-2 text-[11px] text-slate-400">{resuming ? "Edit the remaining groups — swap, drop anyone who left, or add someone for a 2nd attempt." : "Tap a column, then a name."} <b>Add group</b> queues it. List sorted A–Z · # = engine. ✓ = already graded.</p>
 
         {/* column headers */}
         <div className="grid gap-2" style={cols}>
@@ -438,9 +439,14 @@ function ChartScreen({ config, topic, sides, companyIds, pool, onBack, onStartGr
         {/* available pool */}
         <div className="mt-3 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Available ({available.length})</div>
         <div className="mt-1 flex flex-1 flex-wrap content-start items-start gap-2 overflow-auto rounded-xl bg-slate-100 p-2">
-          {available.map((id) => (
-            <button key={id} onClick={() => fill(id)} className="h-10 rounded-full bg-white px-3 text-sm font-semibold text-slate-700 shadow-sm active:scale-95"><span className="text-slate-400">#{engineNumOf(id)}</span> {fullName(recruit(id))}</button>
-          ))}
+          {available.map((id) => {
+            const done = alreadyGraded.indexOf(id) >= 0;
+            return (
+              <button key={id} onClick={() => fill(id)} className={`h-10 rounded-full px-3 text-sm font-semibold shadow-sm active:scale-95 ${done ? "bg-green-50 text-slate-500" : "bg-white text-slate-700"}`}>
+                <span className="text-slate-400">#{engineNumOf(id)}</span> {fullName(recruit(id))}{done ? <span className="ml-1 text-green-600">✓</span> : null}
+              </button>
+            );
+          })}
           {available.length === 0 && <span className="p-2 text-xs text-slate-400">Everyone is placed.</span>}
         </div>
 
@@ -459,7 +465,7 @@ function reversePairing(group) {
 }
 
 /* Grade one group, column by column, then hand results back to submit. */
-function GradeScreen({ config, group, groupNumber, onBack, onSubmit, busy }) {
+function GradeScreen({ config, group, groupNumber, onEdit, onSwap, onSubmit, busy }) {
   const [idx, setIdx] = useState(0);
   const [results, setResults] = useState({}); // key event_id -> {result, reasons:[], note}
   const [reasonOpen, setReasonOpen] = useState(false);
@@ -487,9 +493,9 @@ function GradeScreen({ config, group, groupNumber, onBack, onSubmit, busy }) {
 
   return (
     <>
-      <TopBar left={<button onClick={onBack}>‹</button>} center={"Grade · Group " + groupNumber} right={idx + 1 + "/" + group.length} />
+      <TopBar left={<button onClick={onEdit}>‹ Edit</button>} center={"Grade · Group " + groupNumber} right={idx + 1 + "/" + group.length} />
       <div className="flex h-full flex-col p-4">
-        <div className="mb-4 flex gap-2">
+        <div className="mb-3 flex gap-2">
           {group.map((c, i) => {
             const o = results[keyOf(c)] && results[keyOf(c)].result;
             const bg = o === "pass" ? "bg-green-600" : o === "fail" ? "bg-red-600" : o === "memo" ? "bg-amber-500" : "bg-slate-300";
@@ -501,6 +507,16 @@ function GradeScreen({ config, group, groupNumber, onBack, onSubmit, busy }) {
             );
           })}
         </div>
+
+        {/* mid-grade controls: swap the pair (before grading), or edit the queue */}
+        {!reasonOpen && (
+          <div className="mb-3 flex items-center justify-center gap-2">
+            {group.length >= 2 && Object.keys(results).length === 0 && (
+              <button onClick={onSwap} className="rounded-full bg-slate-200 px-3 py-1 text-xs font-bold text-slate-700">⇄ Swap roles</button>
+            )}
+            <button onClick={onEdit} className="rounded-full bg-slate-200 px-3 py-1 text-xs font-bold text-slate-700">✎ Edit groups</button>
+          </div>
+        )}
 
         {reasonOpen ? (
           <>
@@ -830,12 +846,14 @@ function App() {
   const [sides, setSides] = useState({});
   const [companyIds, setCompanyIds] = useState([]);
   const [sessionId, setSessionId] = useState(null);
-  const [pool, setPool] = useState([]);               // sorted roster for the chart builder
-  const [roundGroups, setRoundGroups] = useState([]); // groups built this round (for replay)
-  const [gradePlan, setGradePlan] = useState([]);     // groups currently being graded, in order
+  const [pool, setPool] = useState([]);                 // sorted roster for the chart builder
+  const [gradedThisRound, setGradedThisRound] = useState([]); // groups actually submitted this round
+  const [gradePlan, setGradePlan] = useState([]);       // groups currently being graded, in order
   const [planIndex, setPlanIndex] = useState(0);
   const [currentGroup, setCurrentGroup] = useState(null);
   const [groupNumber, setGroupNumber] = useState(1);
+  const [resuming, setResuming] = useState(false);      // returning to the builder mid-session
+  const [builderQueue, setBuilderQueue] = useState([]); // groups preloaded into the builder when editing
   const [busy, setBusy] = useState(false);
 
   /* ---- boot: decide first screen, load config, start queue flushing ---- */
@@ -870,7 +888,7 @@ function App() {
   }
 
   function logout() { LS.del(KEYS.grader); setGrader(null); resetSession(); setPhase(PHASE.LOGIN); }
-  function resetSession() { setTopic(null); setSides({}); setCompanyIds([]); setSessionId(null); setPool([]); setRoundGroups([]); setGradePlan([]); setPlanIndex(0); setCurrentGroup(null); setGroupNumber(1); }
+  function resetSession() { setTopic(null); setSides({}); setCompanyIds([]); setSessionId(null); setPool([]); setGradedThisRound([]); setGradePlan([]); setPlanIndex(0); setCurrentGroup(null); setGroupNumber(1); setResuming(false); setBuilderQueue([]); }
 
   /* ---- flow handlers ---- */
   function handleLogin(g) { setGrader(g); LS.set(KEYS.grader, g); setPhase(PHASE.HUB); }
@@ -882,15 +900,39 @@ function App() {
     // best-effort session start (audit only; safe to fail offline)
     apiPost({ action: "startSession", session_id: sid, grader_id: grader.grader_id, topic_id: topic.topic_id, company_ids: ids }).catch(() => {});
     setPool(sortedRoster(config, ids));   // sorted A–Z; the chart builds groups off this
-    setRoundGroups([]); setGradePlan([]); setGroupNumber(1);
+    setGradedThisRound([]); setGradePlan([]); setGroupNumber(1); setResuming(false); setBuilderQueue([]);
     setPhase(PHASE.CHART);
   }
 
-  // The grader finished building groups on the chart → grade through them all.
-  function startGrading(groups) { setRoundGroups(groups); beginPlan(groups); }
-  function beginPlan(groups) {
-    setGradePlan(groups); setPlanIndex(0); setCurrentGroup(groups[0] || null); setGroupNumber(1);
+  // Called from the builder's "Start grading". Fresh build resets the round;
+  // resuming (after Edit groups) keeps the groups already graded.
+  function startGrading(groups) {
+    if (!resuming) setGradedThisRound([]);
+    setGradePlan(groups); setPlanIndex(0); setCurrentGroup(groups[0] || null);
+    setGroupNumber((resuming ? gradedThisRound.length : 0) + 1);
+    setResuming(false); setBuilderQueue([]);
     setPhase(groups.length ? PHASE.GRADE : PHASE.CHART);
+  }
+
+  // Re-grade an already-graded set (round-end run again / swap) as new attempts.
+  function beginReplay(groups) {
+    setGradedThisRound([]); setGradePlan(groups); setPlanIndex(0); setCurrentGroup(groups[0] || null);
+    setGroupNumber(1); setResuming(false); setBuilderQueue([]);
+    setPhase(groups.length ? PHASE.GRADE : PHASE.ROUNDEND);
+  }
+
+  // Mid-session: hop back to the builder with the not-yet-graded groups so the
+  // grader can swap, drop people who left, or add someone for a 2nd attempt.
+  function editGroups() {
+    setBuilderQueue(gradePlan.slice(planIndex)); // current (ungraded) + the rest
+    setResuming(true);
+    setPhase(PHASE.CHART);
+  }
+
+  // Swap the two people in the current group (before they're graded).
+  function swapCurrent() {
+    setCurrentGroup((g) => (g ? reversePairing(g) : g));
+    setGradePlan((p) => p.map((grp, i) => (i === planIndex ? reversePairing(grp) : grp)));
   }
 
   /* Save a graded group, then advance to the next queued group (or end). */
@@ -913,6 +955,7 @@ function App() {
     setPending(getQueue().length);
     setBusy(false);
 
+    setGradedThisRound((g) => [...g, currentGroup]);
     if (planIndex < gradePlan.length - 1) {
       const next = planIndex + 1;
       setPlanIndex(next); setCurrentGroup(gradePlan[next]); setGroupNumber((n) => n + 1);
@@ -921,8 +964,8 @@ function App() {
     }
   }
 
-  function runSame() { if (roundGroups.length) beginPlan(roundGroups); }
-  function runSwap() { if (roundGroups.length) beginPlan(roundGroups.map(reversePairing)); }
+  function runSame() { if (gradedThisRound.length) beginReplay(gradedThisRound); }
+  function runSwap() { if (gradedThisRound.length) beginReplay(gradedThisRound.map(reversePairing)); }
   function endSession() {
     if (sessionId) apiPost({ action: "endSession", session_id: sessionId }).catch(() => {});
     resetSession(); setPhase(PHASE.HUB);
@@ -939,9 +982,9 @@ function App() {
   else if (phase === PHASE.TOPIC) body = <TopicScreen config={config} onBack={() => setPhase(PHASE.HUB)} onPick={pickTopic} />;
   else if (phase === PHASE.SESSION) body = <SessionSetupScreen config={config} topic={topic} onBack={() => setPhase(PHASE.TOPIC)} onNext={lockSides} />;
   else if (phase === PHASE.COMPANY) body = <CompanyScreen config={config} onBack={() => setPhase(PHASE.SESSION)} onNext={pickCompanies} />;
-  else if (phase === PHASE.CHART) body = <ChartScreen config={config} topic={topic} sides={sides} companyIds={companyIds} pool={pool} onBack={() => setPhase(PHASE.COMPANY)} onStartGrading={startGrading} />;
-  else if (phase === PHASE.GRADE) body = <GradeScreen key={"g" + groupNumber} config={config} group={currentGroup} groupNumber={groupNumber} busy={busy} onBack={() => setPhase(PHASE.CHART)} onSubmit={submitGroup} />;
-  else if (phase === PHASE.ROUNDEND) body = <RoundEndScreen count={roundGroups.length} onSame={runSame} onSwap={runSwap} onEnd={endSession} />;
+  else if (phase === PHASE.CHART) body = <ChartScreen config={config} topic={topic} sides={sides} companyIds={companyIds} pool={pool} initialQueue={builderQueue} gradedIds={gradedThisRound.reduce((a, g) => a.concat(g.map((c) => c.recruit_id)), [])} resuming={resuming} onBack={() => (resuming ? startGrading(builderQueue) : setPhase(PHASE.COMPANY))} onStartGrading={startGrading} />;
+  else if (phase === PHASE.GRADE) body = <GradeScreen key={"g" + groupNumber} config={config} group={currentGroup} groupNumber={groupNumber} busy={busy} onEdit={editGroups} onSwap={swapCurrent} onSubmit={submitGroup} />;
+  else if (phase === PHASE.ROUNDEND) body = <RoundEndScreen count={gradedThisRound.length} onSame={runSame} onSwap={runSwap} onEnd={endSession} />;
 
   const showStatus = phase !== PHASE.SETUP_URL && phase !== PHASE.LOADING;
 

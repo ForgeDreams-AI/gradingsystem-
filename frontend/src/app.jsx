@@ -316,13 +316,14 @@ function sortedRoster(config, companyIds) {
  * then walks every queued group. Available list is auto-sorted A–Z (graders
  * don't set the order). The # is the engine company.
  */
-function ChartScreen({ config, topic, sides, companyIds, pool, initialQueue, gradedIds, resuming, onBack, onStartGrading }) {
+function ChartScreen({ config, topic, sides, companyIds, pool, initialQueue, gradedIds, resuming, onCompaniesChange, onBack, onStartGrading }) {
   const events = eventsForTopic(config, topic.topic_id);
   const alreadyGraded = gradedIds || [];
 
   const [queue, setQueue] = useState(initialQueue || []); // preloaded when editing mid-session
   const [slots, setSlots] = useState({});  // the group currently being built
   const [active, setActive] = useState(events[0] ? events[0].event_id : null);
+  const [showAddCo, setShowAddCo] = useState(false);
 
   const recruit = (id) => config.recruits.find((r) => r.recruit_id === id) || {};
   const companyName = (id) => { const r = recruit(id); const c = (config.companies || []).find((x) => x.company_id === r.company_id); return c ? c.name : ""; };
@@ -358,6 +359,16 @@ function ChartScreen({ config, topic, sides, companyIds, pool, initialQueue, gra
   };
   const removeQueued = (i) => setQueue((q) => q.filter((_, k) => k !== i));
 
+  const addCompany = (cid) => { setShowAddCo(false); if (onCompaniesChange) onCompaniesChange(companyIds.concat([cid])); };
+  const removeCompany = (cid) => {
+    const inCo = (rid) => recruit(rid).company_id === cid;
+    // pull that company's people out of any queued groups + the current slots
+    setQueue((q) => q.map((g) => g.filter((c) => !inCo(c.recruit_id))).filter((g) => g.length));
+    setSlots((s) => { const ns = {}; Object.keys(s).forEach((k) => { ns[k] = s[k] && inCo(s[k]) ? null : s[k]; }); return ns; });
+    if (onCompaniesChange) onCompaniesChange(companyIds.filter((x) => x !== cid));
+  };
+  const otherCompanies = (config.companies || []).filter((c) => companyIds.indexOf(c.company_id) < 0);
+
   const start = () => {
     const groups = queue.slice();
     const g = buildCurrent(); if (g.length) groups.push(g);   // include the one in progress
@@ -373,6 +384,29 @@ function ChartScreen({ config, topic, sides, companyIds, pool, initialQueue, gra
       <TopBar left={<button onClick={onBack}>‹</button>} center={resuming ? "Edit Groups" : "Build Groups"} right={totalGroups + " grp"} />
       <div className="flex h-full flex-col overflow-hidden p-3">
         <p className="mb-2 text-[11px] text-slate-400">{resuming ? "Edit the remaining groups — swap, drop anyone who left, or add someone for a 2nd attempt." : "Tap a column, then a name."} <b>Add group</b> queues it. List sorted A–Z · # = engine. ✓ = already graded.</p>
+
+        {/* companies in this session — drop one or add another mid-session */}
+        <div className="mb-2 flex flex-wrap items-center gap-1.5">
+          <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Companies:</span>
+          {companyIds.map((cid) => {
+            const c = (config.companies || []).find((x) => x.company_id === cid);
+            return (
+              <span key={cid} className="flex items-center gap-1 rounded-full bg-slate-800 px-2 py-1 text-[11px] font-bold text-white">
+                {c ? c.name : cid}<button onClick={() => removeCompany(cid)} className="text-slate-300">✕</button>
+              </span>
+            );
+          })}
+          {otherCompanies.length > 0 && (
+            <button onClick={() => setShowAddCo((s) => !s)} className="rounded-full border border-dashed border-slate-400 px-2 py-1 text-[11px] font-semibold text-slate-500">+ company</button>
+          )}
+        </div>
+        {showAddCo && (
+          <div className="mb-2 flex flex-wrap gap-1.5">
+            {otherCompanies.map((c) => (
+              <button key={c.company_id} onClick={() => addCompany(c.company_id)} className="rounded-full border border-slate-300 bg-white px-2 py-1 text-[11px] font-semibold text-slate-700">+ {c.name}</button>
+            ))}
+          </div>
+        )}
 
         {/* column headers */}
         <div className="grid gap-2" style={cols}>
@@ -904,6 +938,17 @@ function App() {
     setPhase(PHASE.CHART);
   }
 
+  // Add/remove a company mid-session: the new roster swaps into Available.
+  // Already-graded results are untouched; swaps are logged for the audit trail.
+  function changeCompanies(newIds) {
+    const added = newIds.filter((x) => companyIds.indexOf(x) < 0);
+    const removed = companyIds.filter((x) => newIds.indexOf(x) < 0);
+    added.forEach((cid) => apiPost({ action: "swapCompany", session_id: sessionId, add_company_id: cid }).catch(() => {}));
+    removed.forEach((cid) => apiPost({ action: "swapCompany", session_id: sessionId, remove_company_id: cid }).catch(() => {}));
+    setCompanyIds(newIds);
+    setPool(sortedRoster(config, newIds));
+  }
+
   // Called from the builder's "Start grading". Fresh build resets the round;
   // resuming (after Edit groups) keeps the groups already graded.
   function startGrading(groups) {
@@ -982,7 +1027,7 @@ function App() {
   else if (phase === PHASE.TOPIC) body = <TopicScreen config={config} onBack={() => setPhase(PHASE.HUB)} onPick={pickTopic} />;
   else if (phase === PHASE.SESSION) body = <SessionSetupScreen config={config} topic={topic} onBack={() => setPhase(PHASE.TOPIC)} onNext={lockSides} />;
   else if (phase === PHASE.COMPANY) body = <CompanyScreen config={config} onBack={() => setPhase(PHASE.SESSION)} onNext={pickCompanies} />;
-  else if (phase === PHASE.CHART) body = <ChartScreen config={config} topic={topic} sides={sides} companyIds={companyIds} pool={pool} initialQueue={builderQueue} gradedIds={gradedThisRound.reduce((a, g) => a.concat(g.map((c) => c.recruit_id)), [])} resuming={resuming} onBack={() => (resuming ? startGrading(builderQueue) : setPhase(PHASE.COMPANY))} onStartGrading={startGrading} />;
+  else if (phase === PHASE.CHART) body = <ChartScreen config={config} topic={topic} sides={sides} companyIds={companyIds} pool={pool} initialQueue={builderQueue} gradedIds={gradedThisRound.reduce((a, g) => a.concat(g.map((c) => c.recruit_id)), [])} resuming={resuming} onCompaniesChange={changeCompanies} onBack={() => (resuming ? startGrading(builderQueue) : setPhase(PHASE.COMPANY))} onStartGrading={startGrading} />;
   else if (phase === PHASE.GRADE) body = <GradeScreen key={"g" + groupNumber} config={config} group={currentGroup} groupNumber={groupNumber} busy={busy} onEdit={editGroups} onSwap={swapCurrent} onSubmit={submitGroup} />;
   else if (phase === PHASE.ROUNDEND) body = <RoundEndScreen count={gradedThisRound.length} onSame={runSame} onSwap={runSwap} onEnd={endSession} />;
 

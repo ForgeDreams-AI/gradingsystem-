@@ -326,9 +326,15 @@ function ChartScreen({ config, topic, sides, companyIds, pool, groupNumber, onBa
   const recruit = (id) => config.recruits.find((r) => r.recruit_id === id) || {};
   const companyName = (id) => { const r = recruit(id); const c = (config.companies || []).find((x) => x.company_id === r.company_id); return c ? c.name : ""; };
 
-  // Stable roster number (#1, #2, …) from the full sorted roster for this session.
-  const fullRoster = sortedRoster(config, companyIds);
-  const numOf = (id) => fullRoster.indexOf(id) + 1;
+  // The "#" shown next to a name is their ENGINE COMPANY number
+  // (parsed from the company name, e.g. "Engine 4" -> "4").
+  const engineNumOf = (id) => {
+    const r = recruit(id);
+    const c = (config.companies || []).find((x) => x.company_id === r.company_id);
+    if (!c) return "";
+    const m = String(c.name).match(/\d+/);
+    return m ? m[0] : c.name;
+  };
 
   const fill = (id) => setSlots((s) => {
     const cleared = {}; Object.keys(s).forEach((k) => { cleared[k] = s[k] === id ? null : s[k]; });
@@ -378,8 +384,8 @@ function ChartScreen({ config, topic, sides, companyIds, pool, groupNumber, onBa
                 <>
                   <button onClick={() => clearSlot(ev.event_id)} className="absolute -right-2 -top-2 flex h-6 w-6 items-center justify-center rounded-full bg-red-600 text-xs font-bold text-white shadow">✕</button>
                   <button onClick={() => clearSlot(ev.event_id)} className="leading-tight">
-                    <div className="text-sm font-bold text-slate-800"><span className="text-slate-400">#{numOf(slots[ev.event_id])}</span> {fullName(recruit(slots[ev.event_id]))}</div>
-                    <div className="text-[10px] text-slate-400">{companyName(slots[ev.event_id])}</div>
+                    <div className="text-sm font-bold text-slate-800">{fullName(recruit(slots[ev.event_id]))}</div>
+                    <div className="text-[10px] text-slate-400">#{engineNumOf(slots[ev.event_id])} · {companyName(slots[ev.event_id])}</div>
                   </button>
                 </>
               ) : <button onClick={() => setActive(ev.event_id)} className="text-xs text-slate-400">empty — tap a name</button>}
@@ -394,7 +400,7 @@ function ChartScreen({ config, topic, sides, companyIds, pool, groupNumber, onBa
         <div className="mt-3 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Available ({available.length})</div>
         <div className="mt-1 flex flex-1 flex-wrap content-start items-start gap-2 overflow-auto rounded-xl bg-slate-100 p-2">
           {available.map((id) => (
-            <button key={id} onClick={() => fill(id)} className="h-10 rounded-full bg-white px-3 text-sm font-semibold text-slate-700 shadow-sm active:scale-95"><span className="text-slate-400">#{numOf(id)}</span> {fullName(recruit(id))}</button>
+            <button key={id} onClick={() => fill(id)} className="h-10 rounded-full bg-white px-3 text-sm font-semibold text-slate-700 shadow-sm active:scale-95"><span className="text-slate-400">#{engineNumOf(id)}</span> {fullName(recruit(id))}</button>
           ))}
           {available.length === 0 && <span className="p-2 text-xs text-slate-400">Everyone is placed.</span>}
         </div>

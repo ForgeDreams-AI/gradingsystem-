@@ -301,77 +301,112 @@ function CompanyScreen({ config, onBack, onNext }) {
   );
 }
 
-/* Tap-to-fill chart: one column per event, one recruit each. ✕ to remove. */
-/*
- * Sorted roster. Everyone is listed A–Z (reorder with ▲▼, ✕ to drop someone
- * who's absent). Grading then auto-pairs down the list: the top N (one per
- * event) grade together; when they're done it moves to the next N down.
- */
-function OrderScreen({ config, topic, sides, companyIds, onBack, onStart }) {
-  const events = eventsForTopic(config, topic.topic_id);
-  const N = Math.max(events.length, 1);
-
-  const sorted = rosterFor(config, companyIds).slice().sort((a, b) =>
+/* All recruits in the chosen companies, sorted A–Z (the auto-pair order). */
+function sortedRoster(config, companyIds) {
+  return rosterFor(config, companyIds).slice().sort((a, b) =>
     (a.last_name || "").localeCompare(b.last_name || "") ||
     (a.first_name || "").localeCompare(b.first_name || "")
   ).map((r) => r.recruit_id);
+}
 
-  const [order, setOrder] = useState(sorted);
+/*
+ * The original tap-to-fill chart — now AUTO-FILLED from the sorted roster. Each
+ * group opens pre-loaded with the next pair off the top of the list. Before
+ * grading, the grader can: replace someone (✕ then tap a name), ⇄ swap roles,
+ * or fill an empty spot from the Available list. After each submit you land
+ * back here for the next group.
+ */
+function ChartScreen({ config, topic, sides, pool, groupNumber, onBack, onStart, onFinish }) {
+  const events = eventsForTopic(config, topic.topic_id);
+
+  // Pre-fill: first N of the (sorted) pool, one per event column.
+  const seed = {};
+  events.forEach((ev, i) => { seed[ev.event_id] = pool[i] || null; });
+
+  const [slots, setSlots] = useState(seed);
+  const [active, setActive] = useState(events[0] ? events[0].event_id : null);
+
+  const placed = Object.values(slots).filter(Boolean);
+  const available = pool.filter((id) => !placed.includes(id));
   const recruit = (id) => config.recruits.find((r) => r.recruit_id === id) || {};
-  const move = (i, dir) => setOrder((o) => {
-    const j = i + dir; if (j < 0 || j >= o.length) return o;
-    const n = o.slice(); const t = n[i]; n[i] = n[j]; n[j] = t; return n;
+  const companyName = (id) => { const r = recruit(id); const c = (config.companies || []).find((x) => x.company_id === r.company_id); return c ? c.name : ""; };
+
+  const fill = (id) => setSlots((s) => {
+    const cleared = {}; Object.keys(s).forEach((k) => { cleared[k] = s[k] === id ? null : s[k]; });
+    return { ...cleared, [active]: id };
   });
-  const drop = (i) => setOrder((o) => o.filter((_, k) => k !== i));
+  const clearSlot = (eid) => setSlots((s) => ({ ...s, [eid]: null }));
+  const swapRoles = () => {
+    const ids = events.map((ev) => slots[ev.event_id]).reverse();
+    const ns = {}; events.forEach((ev, i) => { ns[ev.event_id] = ids[i]; }); setSlots(ns);
+  };
+  const ready = placed.length > 0;
+
+  function start() {
+    const group = events.filter((ev) => slots[ev.event_id]).map((ev) => {
+      const id = slots[ev.event_id]; const r = recruit(id);
+      return { recruit_id: id, event_id: ev.event_id, side_id: sides[ev.event_id] || "", company_id: r.company_id || "" };
+    });
+    onStart(group);
+  }
+
+  const cols = { gridTemplateColumns: "repeat(" + Math.max(events.length, 1) + ", minmax(0,1fr))" };
 
   return (
     <>
-      <TopBar left={<button onClick={onBack}>‹</button>} center="Roster Order" right={order.length + " ppl"} />
-      <div className="flex h-full flex-col p-3">
-        <p className="mb-2 text-[11px] text-slate-400">
-          Sorted A–Z. Top {N} grade together, then it moves down. ▲▼ to reorder · ✕ if someone's absent.
-        </p>
-        <div className="flex-1 space-y-1 overflow-auto">
-          {order.map((id, i) => {
-            const ev = events[i % N] || {};
-            const newGroup = i % N === 0;
-            return (
-              <div key={id}>
-                {newGroup && <div className="mt-2 mb-1 text-[10px] font-bold uppercase tracking-wide text-slate-400">Group {Math.floor(i / N) + 1}</div>}
-                <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white p-2">
-                  <span className="w-5 text-center text-xs font-bold text-slate-400">{i + 1}</span>
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate font-bold text-slate-800">{fullName(recruit(id))}</div>
-                    <div className="truncate text-[10px] text-slate-400">{ev.name}{sides[ev.event_id] ? " · " + sideName(config, sides[ev.event_id]) + " side" : ""}</div>
-                  </div>
-                  <button onClick={() => move(i, -1)} className="px-1 text-slate-400">▲</button>
-                  <button onClick={() => move(i, 1)} className="px-1 text-slate-400">▼</button>
-                  <button onClick={() => drop(i)} className="px-1 text-red-500">✕</button>
-                </div>
-              </div>
-            );
-          })}
-          {order.length === 0 && <p className="p-3 text-sm text-slate-400">No recruits in the selected companies.</p>}
+      <TopBar left={<button onClick={onBack}>‹</button>} center="Group" right={"Grp " + groupNumber} />
+      <div className="flex h-full flex-col overflow-hidden p-3">
+        <p className="mb-2 text-[11px] text-slate-400">Pre-filled from the sorted list. ✕ to remove · tap a name to fill · ⇄ swap roles.</p>
+
+        {/* column headers (also pick which column an Available tap fills) */}
+        <div className="grid gap-2" style={cols}>
+          {events.map((ev) => (
+            <button key={ev.event_id} onClick={() => setActive(ev.event_id)}
+              className={`rounded-xl border-2 p-2 text-center ${active === ev.event_id ? "border-slate-900 bg-slate-100" : "border-slate-200 bg-white"}`}>
+              <div className="text-xs font-bold text-slate-800">{ev.name}</div>
+              {sides[ev.event_id]
+                ? <div className="mt-1 inline-block rounded bg-slate-800 px-1.5 py-0.5 text-[9px] font-bold text-white">🔒 {sideName(config, sides[ev.event_id])}</div>
+                : <div className="text-[10px] uppercase tracking-wide text-slate-400">no side</div>}
+            </button>
+          ))}
         </div>
-        <div className="pt-3"><BigButton color="green" onClick={() => onStart(order)} disabled={order.length === 0}>Start grading →</BigButton></div>
+
+        {/* the slots */}
+        <div className="mt-2 grid gap-2" style={cols}>
+          {events.map((ev) => (
+            <div key={ev.event_id} className={`relative flex h-24 items-center justify-center rounded-xl border-2 border-dashed p-2 text-center ${slots[ev.event_id] ? "border-green-500 bg-green-50" : active === ev.event_id ? "border-slate-400 bg-white" : "border-slate-300 bg-white"}`}>
+              {slots[ev.event_id] ? (
+                <>
+                  <button onClick={() => clearSlot(ev.event_id)} className="absolute -right-2 -top-2 flex h-6 w-6 items-center justify-center rounded-full bg-red-600 text-xs font-bold text-white shadow">✕</button>
+                  <button onClick={() => clearSlot(ev.event_id)} className="leading-tight">
+                    <div className="text-sm font-bold text-slate-800">{fullName(recruit(slots[ev.event_id]))}</div>
+                    <div className="text-[10px] text-slate-400">{companyName(slots[ev.event_id])}</div>
+                  </button>
+                </>
+              ) : <button onClick={() => setActive(ev.event_id)} className="text-xs text-slate-400">empty — tap a name</button>}
+            </div>
+          ))}
+        </div>
+
+        {events.length >= 2 && (
+          <button onClick={swapRoles} className="mt-2 self-center rounded-full bg-slate-200 px-4 py-1.5 text-xs font-bold text-slate-700">⇄ Swap roles</button>
+        )}
+
+        <div className="mt-3 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Available ({available.length})</div>
+        <div className="mt-1 flex flex-1 flex-wrap content-start items-start gap-2 overflow-auto rounded-xl bg-slate-100 p-2">
+          {available.map((id) => (
+            <button key={id} onClick={() => fill(id)} className="h-10 rounded-full bg-white px-3 text-sm font-semibold text-slate-700 shadow-sm active:scale-95">{fullName(recruit(id))}</button>
+          ))}
+          {available.length === 0 && <span className="p-2 text-xs text-slate-400">Everyone is placed.</span>}
+        </div>
+
+        <div className="space-y-2 pt-3">
+          <BigButton color="green" onClick={start} disabled={!ready}>Start Grading Group →</BigButton>
+          <button onClick={onFinish} className="w-full py-2 text-xs font-semibold text-slate-500">Finish round →</button>
+        </div>
       </div>
     </>
   );
-}
-
-/* Turn an ordered list of recruit ids into groups of N (one recruit per event). */
-function buildGroups(orderedIds, events, sides, config) {
-  const N = Math.max(events.length, 1);
-  const groups = [];
-  for (let i = 0; i < orderedIds.length; i += N) {
-    const chunk = orderedIds.slice(i, i + N);
-    groups.push(chunk.map((rid, idx) => {
-      const ev = events[idx];
-      const r = config.recruits.find((x) => x.recruit_id === rid) || {};
-      return { recruit_id: rid, event_id: ev.event_id, side_id: sides[ev.event_id] || "", company_id: r.company_id || "" };
-    }));
-  }
-  return groups;
 }
 
 /* Swap roles within each group (reverse who's on each event). */
@@ -737,7 +772,7 @@ function SettingEditor({ row, onCancel, onSaved }) {
 
 /* ================================= App ================================== */
 
-const PHASE = { LOADING: "loading", SETUP_URL: "setupUrl", LOGIN: "login", HUB: "hub", ADMIN: "admin", TOPIC: "topic", SESSION: "session", COMPANY: "company", ORDER: "order", GRADE: "grade", ROUNDEND: "roundend" };
+const PHASE = { LOADING: "loading", SETUP_URL: "setupUrl", LOGIN: "login", HUB: "hub", ADMIN: "admin", TOPIC: "topic", SESSION: "session", COMPANY: "company", CHART: "chart", GRADE: "grade", ROUNDEND: "roundend" };
 
 function App() {
   const [phase, setPhase] = useState(PHASE.LOADING);
@@ -752,11 +787,12 @@ function App() {
   const [sides, setSides] = useState({});
   const [companyIds, setCompanyIds] = useState([]);
   const [sessionId, setSessionId] = useState(null);
-  const [roundGroups, setRoundGroups] = useState([]); // the canonical plan for this round
-  const [plan, setPlan] = useState([]);               // groups we're currently grading through
-  const [planIndex, setPlanIndex] = useState(0);
+  const [pool, setPool] = useState([]);               // ungraded recruit ids, sorted (auto-pair order)
+  const [roundGroups, setRoundGroups] = useState([]); // groups graded this round (for replay)
   const [currentGroup, setCurrentGroup] = useState(null);
   const [groupNumber, setGroupNumber] = useState(1);
+  const [replayPlan, setReplayPlan] = useState(null); // when replaying a round (same/swap)
+  const [replayIndex, setReplayIndex] = useState(0);
   const [busy, setBusy] = useState(false);
 
   /* ---- boot: decide first screen, load config, start queue flushing ---- */
@@ -791,7 +827,7 @@ function App() {
   }
 
   function logout() { LS.del(KEYS.grader); setGrader(null); resetSession(); setPhase(PHASE.LOGIN); }
-  function resetSession() { setTopic(null); setSides({}); setCompanyIds([]); setSessionId(null); setRoundGroups([]); setPlan([]); setPlanIndex(0); setCurrentGroup(null); setGroupNumber(1); }
+  function resetSession() { setTopic(null); setSides({}); setCompanyIds([]); setSessionId(null); setPool([]); setRoundGroups([]); setCurrentGroup(null); setGroupNumber(1); setReplayPlan(null); setReplayIndex(0); }
 
   /* ---- flow handlers ---- */
   function handleLogin(g) { setGrader(g); LS.set(KEYS.grader, g); setPhase(PHASE.HUB); }
@@ -802,22 +838,14 @@ function App() {
     const sid = uuid(); setSessionId(sid);
     // best-effort session start (audit only; safe to fail offline)
     apiPost({ action: "startSession", session_id: sid, grader_id: grader.grader_id, topic_id: topic.topic_id, company_ids: ids }).catch(() => {});
-    setRoundGroups([]); setPhase(PHASE.ORDER);
+    setPool(sortedRoster(config, ids));   // sorted; chart auto-fills the top off this
+    setRoundGroups([]); setReplayPlan(null); setGroupNumber(1);
+    setPhase(PHASE.CHART);
   }
 
-  // From the sorted roster: build groups of N and start grading the first.
-  function startGrading(orderedIds) {
-    const events = eventsForTopic(config, topic.topic_id);
-    const groups = buildGroups(orderedIds, events, sides, config);
-    setRoundGroups(groups);
-    beginPass(groups);
-  }
-  function beginPass(groups) {
-    setPlan(groups); setPlanIndex(0); setCurrentGroup(groups[0] || null); setGroupNumber(1);
-    setPhase(groups.length ? PHASE.GRADE : PHASE.ROUNDEND);
-  }
+  function startGroup(group) { setCurrentGroup(group); setPhase(PHASE.GRADE); }
 
-  /* Save a graded group, then advance down the plan (or end the round). */
+  /* Save a graded group, then go back to the chart for the next pair (or end). */
   async function submitGroup(resultsByEvent) {
     setBusy(true);
     const items = currentGroup.map((col) => {
@@ -837,17 +865,25 @@ function App() {
     setPending(getQueue().length);
     setBusy(false);
 
-    // advance to the next group down the list
-    if (planIndex < plan.length - 1) {
-      const next = planIndex + 1;
-      setPlanIndex(next); setCurrentGroup(plan[next]); setGroupNumber((n) => n + 1);
+    if (replayPlan) {
+      // re-grading a whole round (same/swap roles): walk the saved groups
+      const next = replayIndex + 1;
+      if (next < replayPlan.length) { setReplayIndex(next); setCurrentGroup(replayPlan[next]); setGroupNumber((n) => n + 1); setPhase(PHASE.GRADE); }
+      else { setReplayPlan(null); setCurrentGroup(null); setPhase(PHASE.ROUNDEND); }
     } else {
-      setCurrentGroup(null); setPhase(PHASE.ROUNDEND);
+      // normal flow: drop the graded recruits from the pool, build the next chart
+      const ids = currentGroup.map((c) => c.recruit_id);
+      const remaining = pool.filter((x) => ids.indexOf(x) < 0);
+      setPool(remaining);
+      setRoundGroups((g) => [...g, currentGroup]);
+      setGroupNumber((n) => n + 1);
+      setCurrentGroup(null);
+      setPhase(remaining.length ? PHASE.CHART : PHASE.ROUNDEND);
     }
   }
 
-  function runSame() { if (roundGroups.length) beginPass(roundGroups); }
-  function runSwap() { if (roundGroups.length) beginPass(roundGroups.map(reversePairing)); }
+  function runSame() { if (!roundGroups.length) return; setReplayPlan(roundGroups); setReplayIndex(0); setCurrentGroup(roundGroups[0]); setGroupNumber(1); setPhase(PHASE.GRADE); }
+  function runSwap() { if (!roundGroups.length) return; const f = roundGroups.map(reversePairing); setReplayPlan(f); setReplayIndex(0); setCurrentGroup(f[0]); setGroupNumber(1); setPhase(PHASE.GRADE); }
   function endSession() {
     if (sessionId) apiPost({ action: "endSession", session_id: sessionId }).catch(() => {});
     resetSession(); setPhase(PHASE.HUB);
@@ -864,8 +900,8 @@ function App() {
   else if (phase === PHASE.TOPIC) body = <TopicScreen config={config} onBack={() => setPhase(PHASE.HUB)} onPick={pickTopic} />;
   else if (phase === PHASE.SESSION) body = <SessionSetupScreen config={config} topic={topic} onBack={() => setPhase(PHASE.TOPIC)} onNext={lockSides} />;
   else if (phase === PHASE.COMPANY) body = <CompanyScreen config={config} onBack={() => setPhase(PHASE.SESSION)} onNext={pickCompanies} />;
-  else if (phase === PHASE.ORDER) body = <OrderScreen config={config} topic={topic} sides={sides} companyIds={companyIds} onBack={() => setPhase(PHASE.COMPANY)} onStart={startGrading} />;
-  else if (phase === PHASE.GRADE) body = <GradeScreen key={"g" + groupNumber} config={config} group={currentGroup} groupNumber={groupNumber} busy={busy} onBack={() => setPhase(PHASE.ORDER)} onSubmit={submitGroup} />;
+  else if (phase === PHASE.CHART) body = <ChartScreen key={"c" + groupNumber} config={config} topic={topic} sides={sides} pool={pool} groupNumber={groupNumber} onBack={() => setPhase(PHASE.COMPANY)} onStart={startGroup} onFinish={() => setPhase(PHASE.ROUNDEND)} />;
+  else if (phase === PHASE.GRADE) body = <GradeScreen key={"g" + groupNumber} config={config} group={currentGroup} groupNumber={groupNumber} busy={busy} onBack={() => setPhase(replayPlan ? PHASE.ROUNDEND : PHASE.CHART)} onSubmit={submitGroup} />;
   else if (phase === PHASE.ROUNDEND) body = <RoundEndScreen count={roundGroups.length} onSame={runSame} onSwap={runSwap} onEnd={endSession} />;
 
   const showStatus = phase !== PHASE.SETUP_URL && phase !== PHASE.LOADING;

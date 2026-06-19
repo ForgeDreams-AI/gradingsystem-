@@ -315,7 +315,7 @@ function sortedRoster(config, companyIds) {
  * don't set the order); they just pick who to place. ✕ to remove, ⇄ swap roles.
  * After each submit you land back here for the next group.
  */
-function ChartScreen({ config, topic, sides, pool, groupNumber, onBack, onStart, onFinish }) {
+function ChartScreen({ config, topic, sides, companyIds, pool, groupNumber, onBack, onStart, onFinish }) {
   const events = eventsForTopic(config, topic.topic_id);
 
   const [slots, setSlots] = useState({}); // event_id -> recruit_id (starts empty)
@@ -325,6 +325,10 @@ function ChartScreen({ config, topic, sides, pool, groupNumber, onBack, onStart,
   const available = pool.filter((id) => !placed.includes(id));
   const recruit = (id) => config.recruits.find((r) => r.recruit_id === id) || {};
   const companyName = (id) => { const r = recruit(id); const c = (config.companies || []).find((x) => x.company_id === r.company_id); return c ? c.name : ""; };
+
+  // Stable roster number (#1, #2, …) from the full sorted roster for this session.
+  const fullRoster = sortedRoster(config, companyIds);
+  const numOf = (id) => fullRoster.indexOf(id) + 1;
 
   const fill = (id) => setSlots((s) => {
     const cleared = {}; Object.keys(s).forEach((k) => { cleared[k] = s[k] === id ? null : s[k]; });
@@ -374,7 +378,7 @@ function ChartScreen({ config, topic, sides, pool, groupNumber, onBack, onStart,
                 <>
                   <button onClick={() => clearSlot(ev.event_id)} className="absolute -right-2 -top-2 flex h-6 w-6 items-center justify-center rounded-full bg-red-600 text-xs font-bold text-white shadow">✕</button>
                   <button onClick={() => clearSlot(ev.event_id)} className="leading-tight">
-                    <div className="text-sm font-bold text-slate-800">{fullName(recruit(slots[ev.event_id]))}</div>
+                    <div className="text-sm font-bold text-slate-800"><span className="text-slate-400">#{numOf(slots[ev.event_id])}</span> {fullName(recruit(slots[ev.event_id]))}</div>
                     <div className="text-[10px] text-slate-400">{companyName(slots[ev.event_id])}</div>
                   </button>
                 </>
@@ -390,7 +394,7 @@ function ChartScreen({ config, topic, sides, pool, groupNumber, onBack, onStart,
         <div className="mt-3 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Available ({available.length})</div>
         <div className="mt-1 flex flex-1 flex-wrap content-start items-start gap-2 overflow-auto rounded-xl bg-slate-100 p-2">
           {available.map((id) => (
-            <button key={id} onClick={() => fill(id)} className="h-10 rounded-full bg-white px-3 text-sm font-semibold text-slate-700 shadow-sm active:scale-95">{fullName(recruit(id))}</button>
+            <button key={id} onClick={() => fill(id)} className="h-10 rounded-full bg-white px-3 text-sm font-semibold text-slate-700 shadow-sm active:scale-95"><span className="text-slate-400">#{numOf(id)}</span> {fullName(recruit(id))}</button>
           ))}
           {available.length === 0 && <span className="p-2 text-xs text-slate-400">Everyone is placed.</span>}
         </div>
@@ -895,7 +899,7 @@ function App() {
   else if (phase === PHASE.TOPIC) body = <TopicScreen config={config} onBack={() => setPhase(PHASE.HUB)} onPick={pickTopic} />;
   else if (phase === PHASE.SESSION) body = <SessionSetupScreen config={config} topic={topic} onBack={() => setPhase(PHASE.TOPIC)} onNext={lockSides} />;
   else if (phase === PHASE.COMPANY) body = <CompanyScreen config={config} onBack={() => setPhase(PHASE.SESSION)} onNext={pickCompanies} />;
-  else if (phase === PHASE.CHART) body = <ChartScreen key={"c" + groupNumber} config={config} topic={topic} sides={sides} pool={pool} groupNumber={groupNumber} onBack={() => setPhase(PHASE.COMPANY)} onStart={startGroup} onFinish={() => setPhase(PHASE.ROUNDEND)} />;
+  else if (phase === PHASE.CHART) body = <ChartScreen key={"c" + groupNumber} config={config} topic={topic} sides={sides} companyIds={companyIds} pool={pool} groupNumber={groupNumber} onBack={() => setPhase(PHASE.COMPANY)} onStart={startGroup} onFinish={() => setPhase(PHASE.ROUNDEND)} />;
   else if (phase === PHASE.GRADE) body = <GradeScreen key={"g" + groupNumber} config={config} group={currentGroup} groupNumber={groupNumber} busy={busy} onBack={() => setPhase(replayPlan ? PHASE.ROUNDEND : PHASE.CHART)} onSubmit={submitGroup} />;
   else if (phase === PHASE.ROUNDEND) body = <RoundEndScreen count={roundGroups.length} onSame={runSame} onSwap={runSwap} onEnd={endSession} />;
 

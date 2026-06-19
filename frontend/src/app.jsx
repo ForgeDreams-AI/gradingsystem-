@@ -310,20 +310,15 @@ function sortedRoster(config, companyIds) {
 }
 
 /*
- * The original tap-to-fill chart — now AUTO-FILLED from the sorted roster. Each
- * group opens pre-loaded with the next pair off the top of the list. Before
- * grading, the grader can: replace someone (✕ then tap a name), ⇄ swap roles,
- * or fill an empty spot from the Available list. After each submit you land
- * back here for the next group.
+ * The original tap-to-fill chart. Slots start EMPTY — the grader manually taps
+ * each recruit into a column. The Available list is auto-sorted A–Z (graders
+ * don't set the order); they just pick who to place. ✕ to remove, ⇄ swap roles.
+ * After each submit you land back here for the next group.
  */
 function ChartScreen({ config, topic, sides, pool, groupNumber, onBack, onStart, onFinish }) {
   const events = eventsForTopic(config, topic.topic_id);
 
-  // Pre-fill: first N of the (sorted) pool, one per event column.
-  const seed = {};
-  events.forEach((ev, i) => { seed[ev.event_id] = pool[i] || null; });
-
-  const [slots, setSlots] = useState(seed);
+  const [slots, setSlots] = useState({}); // event_id -> recruit_id (starts empty)
   const [active, setActive] = useState(events[0] ? events[0].event_id : null);
 
   const placed = Object.values(slots).filter(Boolean);
@@ -356,7 +351,7 @@ function ChartScreen({ config, topic, sides, pool, groupNumber, onBack, onStart,
     <>
       <TopBar left={<button onClick={onBack}>‹</button>} center="Group" right={"Grp " + groupNumber} />
       <div className="flex h-full flex-col overflow-hidden p-3">
-        <p className="mb-2 text-[11px] text-slate-400">Pre-filled from the sorted list. ✕ to remove · tap a name to fill · ⇄ swap roles.</p>
+        <p className="mb-2 text-[11px] text-slate-400">Tap a column, then a name to place. ✕ to remove · ⇄ swap roles. List is sorted A–Z.</p>
 
         {/* column headers (also pick which column an Available tap fills) */}
         <div className="grid gap-2" style={cols}>

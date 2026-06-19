@@ -8,7 +8,7 @@
  * Bump CACHE (e.g. v1 -> v2) whenever you ship a new app.js so devices refresh.
  * ----------------------------------------------------------------------------
  */
-const CACHE = 'grading-v2';
+const CACHE = 'grading-v3';
 const ASSETS = ['./', './index.html', './app.js', './styles.css', './manifest.webmanifest'];
 
 self.addEventListener('install', function (e) {

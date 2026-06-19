@@ -52,19 +52,38 @@ function uuid() {
 
 function apiBase() { return LS.get(KEYS.apiBase, ""); }
 
+// Parse the response as JSON, but if the backend returns something else (e.g. a
+// Google error/login page), surface a clear, actionable message instead of a
+// generic "network error".
+async function parseResult_(res, label) {
+  const text = await res.text();
+  try { return JSON.parse(text); }
+  catch (e) {
+    return { ok: false, error: "Backend didn't return data for '" + label + "'. Re-deploy the Apps Script as a NEW version (Deploy → Manage deployments → Edit → New version). Got: " + text.slice(0, 60) };
+  }
+}
+
 async function apiGet(params) {
   const qs = Object.keys(params).map((k) => k + "=" + encodeURIComponent(params[k])).join("&");
-  const res = await fetch(apiBase() + "?" + qs, { method: "GET" });
-  return res.json();
+  try {
+    const res = await fetch(apiBase() + "?" + qs, { method: "GET" });
+    return await parseResult_(res, params.action || "GET");
+  } catch (e) {
+    return { ok: false, error: "Couldn't reach the backend (offline or wrong URL).", _network: true };
+  }
 }
 
 async function apiPost(body) {
-  const res = await fetch(apiBase(), {
-    method: "POST",
-    // NOTE: no custom Content-Type header on purpose (keeps it preflight-free).
-    body: JSON.stringify(body),
-  });
-  return res.json();
+  try {
+    const res = await fetch(apiBase(), {
+      method: "POST",
+      // no custom Content-Type header on purpose (keeps it preflight-free)
+      body: JSON.stringify(body),
+    });
+    return await parseResult_(res, body.action || "POST");
+  } catch (e) {
+    return { ok: false, error: "Couldn't reach the backend (offline or wrong URL).", _network: true };
+  }
 }
 
 /* ============================== offline queue ============================= */

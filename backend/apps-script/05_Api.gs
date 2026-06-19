@@ -56,6 +56,8 @@ function doPost(e) {
       case 'submitGroup':  return json_(submitGroup_(body));
       case 'swapCompany':  return json_(swapCompany_(body));
       case 'endSession':   return json_(endSession_(body));
+      case 'saveRecord':   return json_(saveRecord_(body));    // admin add/edit
+      case 'removeRecord': return json_(removeRecord_(body));  // admin deactivate
       default:             return json_({ ok: false, error: 'Unknown POST action: ' + body.action });
     }
   } catch (err) {

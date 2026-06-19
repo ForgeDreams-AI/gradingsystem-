@@ -302,89 +302,82 @@ function CompanyScreen({ config, onBack, onNext }) {
 }
 
 /* Tap-to-fill chart: one column per event, one recruit each. ✕ to remove. */
-function ChartScreen({ config, topic, sides, companyIds, gradedIds, onBack, onStart, onFinishRound, groupNumber }) {
+/*
+ * Sorted roster. Everyone is listed A–Z (reorder with ▲▼, ✕ to drop someone
+ * who's absent). Grading then auto-pairs down the list: the top N (one per
+ * event) grade together; when they're done it moves to the next N down.
+ */
+function OrderScreen({ config, topic, sides, companyIds, onBack, onStart }) {
   const events = eventsForTopic(config, topic.topic_id);
-  const [slots, setSlots] = useState({}); // event_id -> recruit_id
-  const [active, setActive] = useState(events[0] ? events[0].event_id : null);
+  const N = Math.max(events.length, 1);
 
-  const roster = rosterFor(config, companyIds).filter((r) => !gradedIds.includes(r.recruit_id));
-  const placed = Object.values(slots).filter(Boolean);
-  const pool = roster.filter((r) => !placed.includes(r.recruit_id));
-  const ready = events.length > 0 && events.every((ev) => slots[ev.event_id]);
+  const sorted = rosterFor(config, companyIds).slice().sort((a, b) =>
+    (a.last_name || "").localeCompare(b.last_name || "") ||
+    (a.first_name || "").localeCompare(b.first_name || "")
+  ).map((r) => r.recruit_id);
 
-  const place = (rid) => setSlots((s) => {
-    const cleared = {};
-    Object.keys(s).forEach((k) => { cleared[k] = s[k] === rid ? null : s[k]; });
-    return { ...cleared, [active]: rid };
+  const [order, setOrder] = useState(sorted);
+  const recruit = (id) => config.recruits.find((r) => r.recruit_id === id) || {};
+  const move = (i, dir) => setOrder((o) => {
+    const j = i + dir; if (j < 0 || j >= o.length) return o;
+    const n = o.slice(); const t = n[i]; n[i] = n[j]; n[j] = t; return n;
   });
-  const remove = (eid) => setSlots((s) => ({ ...s, [eid]: null }));
-
-  const recruit = (rid) => config.recruits.find((r) => r.recruit_id === rid) || {};
-  const companyName = (rid) => {
-    const r = recruit(rid);
-    const c = (config.companies || []).find((x) => x.company_id === r.company_id);
-    return c ? c.name : "";
-  };
-
-  function start() {
-    const group = events.map((ev) => ({
-      recruit_id: slots[ev.event_id],
-      event_id: ev.event_id,
-      side_id: sides[ev.event_id] || "",
-      company_id: recruit(slots[ev.event_id]).company_id || "",
-    }));
-    onStart(group);
-  }
+  const drop = (i) => setOrder((o) => o.filter((_, k) => k !== i));
 
   return (
     <>
-      <TopBar left={<button onClick={onBack}>‹</button>} center="Build Group" right={"Grp " + groupNumber} />
-      <div className="flex h-full flex-col overflow-hidden p-3">
-        <p className="mb-2 text-[11px] text-slate-400">Tap a column, then a recruit. ✕ to remove/swap.</p>
-
-        <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${Math.max(events.length, 1)}, minmax(0, 1fr))` }}>
-          {events.map((ev) => (
-            <button key={ev.event_id} onClick={() => setActive(ev.event_id)}
-              className={`rounded-xl border-2 p-2 text-center ${active === ev.event_id ? "border-slate-900 bg-slate-100" : "border-slate-200 bg-white"}`}>
-              <div className="text-xs font-bold text-slate-800">{ev.name}</div>
-              {sides[ev.event_id]
-                ? <div className="mt-1 inline-block rounded bg-slate-800 px-1.5 py-0.5 text-[9px] font-bold text-white">🔒 {sideName(config, sides[ev.event_id])}</div>
-                : <div className="text-[10px] uppercase tracking-wide text-slate-400">no side</div>}
-            </button>
-          ))}
+      <TopBar left={<button onClick={onBack}>‹</button>} center="Roster Order" right={order.length + " ppl"} />
+      <div className="flex h-full flex-col p-3">
+        <p className="mb-2 text-[11px] text-slate-400">
+          Sorted A–Z. Top {N} grade together, then it moves down. ▲▼ to reorder · ✕ if someone's absent.
+        </p>
+        <div className="flex-1 space-y-1 overflow-auto">
+          {order.map((id, i) => {
+            const ev = events[i % N] || {};
+            const newGroup = i % N === 0;
+            return (
+              <div key={id}>
+                {newGroup && <div className="mt-2 mb-1 text-[10px] font-bold uppercase tracking-wide text-slate-400">Group {Math.floor(i / N) + 1}</div>}
+                <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white p-2">
+                  <span className="w-5 text-center text-xs font-bold text-slate-400">{i + 1}</span>
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate font-bold text-slate-800">{fullName(recruit(id))}</div>
+                    <div className="truncate text-[10px] text-slate-400">{ev.name}{sides[ev.event_id] ? " · " + sideName(config, sides[ev.event_id]) + " side" : ""}</div>
+                  </div>
+                  <button onClick={() => move(i, -1)} className="px-1 text-slate-400">▲</button>
+                  <button onClick={() => move(i, 1)} className="px-1 text-slate-400">▼</button>
+                  <button onClick={() => drop(i)} className="px-1 text-red-500">✕</button>
+                </div>
+              </div>
+            );
+          })}
+          {order.length === 0 && <p className="p-3 text-sm text-slate-400">No recruits in the selected companies.</p>}
         </div>
-
-        <div className="mt-2 grid gap-2" style={{ gridTemplateColumns: `repeat(${Math.max(events.length, 1)}, minmax(0, 1fr))` }}>
-          {events.map((ev) => (
-            <div key={ev.event_id} className={`relative flex h-24 items-center justify-center rounded-xl border-2 border-dashed p-2 text-center ${slots[ev.event_id] ? "border-green-500 bg-green-50" : "border-slate-300 bg-white"}`}>
-              {slots[ev.event_id] ? (
-                <>
-                  <button onClick={() => remove(ev.event_id)} className="absolute -right-2 -top-2 flex h-6 w-6 items-center justify-center rounded-full bg-red-600 text-xs font-bold text-white shadow">✕</button>
-                  <button onClick={() => remove(ev.event_id)} className="leading-tight">
-                    <div className="text-sm font-bold text-slate-800">{fullName(recruit(slots[ev.event_id]))}</div>
-                    <div className="text-[10px] text-slate-400">{companyName(slots[ev.event_id])}</div>
-                  </button>
-                </>
-              ) : <span className="text-xs text-slate-400">empty</span>}
-            </div>
-          ))}
-        </div>
-
-        <div className="mt-3 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Unselected ({pool.length})</div>
-        <div className="mt-1 flex flex-1 flex-wrap content-start gap-2 overflow-auto rounded-xl bg-slate-100 p-2">
-          {pool.map((r) => (
-            <button key={r.recruit_id} onClick={() => place(r.recruit_id)} className="rounded-full bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm active:scale-95">{fullName(r)}</button>
-          ))}
-          {pool.length === 0 && <span className="p-2 text-xs text-slate-400">No more recruits to place.</span>}
-        </div>
-
-        <div className="space-y-2 pt-3">
-          <BigButton color="green" onClick={start} disabled={!ready}>Start Grading Group →</BigButton>
-          <button onClick={onFinishRound} className="w-full py-2 text-xs font-semibold text-slate-500">Finish round →</button>
-        </div>
+        <div className="pt-3"><BigButton color="green" onClick={() => onStart(order)} disabled={order.length === 0}>Start grading →</BigButton></div>
       </div>
     </>
   );
+}
+
+/* Turn an ordered list of recruit ids into groups of N (one recruit per event). */
+function buildGroups(orderedIds, events, sides, config) {
+  const N = Math.max(events.length, 1);
+  const groups = [];
+  for (let i = 0; i < orderedIds.length; i += N) {
+    const chunk = orderedIds.slice(i, i + N);
+    groups.push(chunk.map((rid, idx) => {
+      const ev = events[idx];
+      const r = config.recruits.find((x) => x.recruit_id === rid) || {};
+      return { recruit_id: rid, event_id: ev.event_id, side_id: sides[ev.event_id] || "", company_id: r.company_id || "" };
+    }));
+  }
+  return groups;
+}
+
+/* Swap roles within each group (reverse who's on each event). */
+function reversePairing(group) {
+  const recruits = group.map((c) => c.recruit_id).reverse();
+  return group.map((c, i) => ({ ...c, recruit_id: recruits[i] }));
 }
 
 /* Grade one group, column by column, then hand results back to submit. */
@@ -431,19 +424,7 @@ function GradeScreen({ config, group, groupNumber, onBack, onSubmit, busy }) {
           })}
         </div>
 
-        {!reasonOpen ? (
-          <>
-            <div className="rounded-2xl bg-white p-4 text-center shadow">
-              <div className="text-xs uppercase tracking-wide text-slate-400">{ev.name}{col.side_id ? " · " + sideName(config, col.side_id) + " side" : ""}</div>
-              <div className="mt-1 text-2xl font-extrabold text-slate-900">{fullName(recruit)}</div>
-            </div>
-            <div className="mt-6 space-y-3">
-              <BigButton color="green" onClick={() => setOutcome("pass")}>PASS</BigButton>
-              <BigButton color="red" onClick={() => setOutcome("fail")}>FAIL</BigButton>
-              <BigButton color="amber" onClick={() => setOutcome("memo")}>MEMO</BigButton>
-            </div>
-          </>
-        ) : (
+        {reasonOpen ? (
           <>
             <div className="text-sm font-bold text-slate-800">Reason(s) — {results[keyOf(col)].result.toUpperCase()}</div>
             <div className="mt-3 flex flex-wrap gap-2">
@@ -457,6 +438,24 @@ function GradeScreen({ config, group, groupNumber, onBack, onSubmit, busy }) {
               className="mt-3 w-full rounded-xl border border-slate-300 p-3 text-sm" />
             <div className="mt-auto"><BigButton color="slate" onClick={confirmReasons}>Save Reason(s)</BigButton></div>
           </>
+        ) : !allDone ? (
+          <>
+            <div className="rounded-2xl bg-white p-4 text-center shadow">
+              <div className="text-xs uppercase tracking-wide text-slate-400">{ev.name}{col.side_id ? " · " + sideName(config, col.side_id) + " side" : ""}</div>
+              <div className="mt-1 text-2xl font-extrabold text-slate-900">{fullName(recruit)}</div>
+            </div>
+            <div className="mt-6 space-y-3">
+              <BigButton color="green" onClick={() => setOutcome("pass")}>PASS</BigButton>
+              <BigButton color="red" onClick={() => setOutcome("fail")}>FAIL</BigButton>
+              <BigButton color="amber" onClick={() => setOutcome("memo")}>MEMO</BigButton>
+            </div>
+          </>
+        ) : (
+          <div className="rounded-2xl border-2 border-green-200 bg-green-50 p-5 text-center">
+            <div className="text-3xl">✓</div>
+            <div className="mt-1 font-bold text-slate-800">Both graded</div>
+            <div className="text-xs text-slate-500">Review the chips above, then submit.</div>
+          </div>
         )}
 
         {allDone && !reasonOpen && (
@@ -508,9 +507,237 @@ function reasonsForEvent(config, eventId) {
   return (config.failReasons || []).filter((r) => !r.event_id || String(r.event_id) === String(eventId));
 }
 
+/* =========================== Home hub + Admin =========================== */
+
+/* After PIN: choose grading or settings. */
+function HubScreen({ grader, onGrade, onSettings }) {
+  return (
+    <>
+      <TopBar center="Home" />
+      <div className="flex h-full flex-col justify-center gap-4 p-6">
+        <div className="text-center">
+          <div className="text-lg font-bold text-slate-800">Hi, {grader ? grader.name : ""}</div>
+          <div className="text-xs text-slate-400">What do you want to do?</div>
+        </div>
+        <BigButton color="green" onClick={onGrade}>▶ Start grading</BigButton>
+        <BigButton color="ghost" onClick={onSettings}>⚙ Settings</BigButton>
+      </div>
+    </>
+  );
+}
+
+/* lookups for showing friendly names in admin lists */
+const look = {
+  captain: (c, id) => { const x = (c.captains || []).find((z) => z.captain_id === id); return x ? x.name : ""; },
+  company: (c, id) => { const x = (c.companies || []).find((z) => z.company_id === id); return x ? x.name : ""; },
+  event: (c, id) => { const x = (c.events || []).find((z) => z.event_id === id); return x ? x.name : ""; },
+  topic: (c, id) => { const x = (c.topics || []).find((z) => z.topic_id === id); return x ? x.name : ""; },
+};
+
+/*
+ * Every editable category, described as data so one generic UI can edit them
+ * all. `tab` matches the Sheet tab; `idCol` is its key column; `fields` are the
+ * editable columns (text by default; type "select"/"yesno" for the rest).
+ */
+const ADMIN_CATS = [
+  { key: "companies", tab: "Companies", label: "Companies", idCol: "company_id", items: (c) => c.companies,
+    title: (r) => r.name, sub: (r, c) => "Captain: " + (look.captain(c, r.captain_id) || "—"),
+    fields: [{ c: "name", label: "Name" }, { c: "captain_id", label: "Captain", type: "select", options: (c) => (c.captains || []).map((x) => ({ value: x.captain_id, label: x.name })) }] },
+  { key: "captains", tab: "Captains", label: "Captains", idCol: "captain_id", items: (c) => c.captains,
+    title: (r) => r.name, sub: (r) => r.email,
+    fields: [{ c: "name", label: "Name" }, { c: "email", label: "Email" }] },
+  { key: "higherups", tab: "HigherUps", label: "Higher-ups", idCol: "higherup_id", items: (c) => c.higherUps,
+    title: (r) => r.name, sub: (r) => r.email,
+    fields: [{ c: "name", label: "Name" }, { c: "email", label: "Email" }] },
+  { key: "recruits", tab: "Recruits", label: "Recruits", idCol: "recruit_id", items: (c) => c.recruits,
+    title: (r) => (r.first_name + " " + r.last_name).trim(), sub: (r, c) => look.company(c, r.company_id),
+    fields: [{ c: "first_name", label: "First name" }, { c: "last_name", label: "Last name" }, { c: "work_email", label: "Work email" },
+             { c: "company_id", label: "Company", type: "select", options: (c) => (c.companies || []).map((x) => ({ value: x.company_id, label: x.name })) }] },
+  { key: "graders", tab: "Graders", label: "Graders & PINs", idCol: "grader_id", items: (c) => c.graders,
+    title: (r) => r.name, sub: () => "PIN set",
+    fields: [{ c: "name", label: "Name" }, { c: "pin", label: "PIN" }] },
+  { key: "reasons", tab: "FailReasons", label: "Fail Reasons", idCol: "reason_id", items: (c) => c.failReasons,
+    title: (r) => r.label, sub: (r, c) => (r.event_id ? "Event: " + look.event(c, r.event_id) : "Global"),
+    fields: [{ c: "label", label: "Label" }, { c: "event_id", label: "Event", type: "select", blank: "Global (any event)", options: (c) => (c.events || []).map((x) => ({ value: x.event_id, label: x.name })) }] },
+  { key: "topics", tab: "Topics", label: "Topics", idCol: "topic_id", items: (c) => c.topics,
+    title: (r) => r.name, sub: () => "",
+    fields: [{ c: "name", label: "Topic name" }] },
+  { key: "events", tab: "Events", label: "Events", idCol: "event_id", items: (c) => c.events,
+    title: (r) => r.name, sub: (r, c) => look.topic(c, r.topic_id) + (look.topic(c, r.topic_id) ? " · " : "") + (isYes(r.side_required) ? "side required" : "no side"),
+    fields: [{ c: "name", label: "Event name" }, { c: "topic_id", label: "Topic", type: "select", options: (c) => (c.topics || []).map((x) => ({ value: x.topic_id, label: x.name })) },
+             { c: "position", label: "Order # (1,2,3…)" }, { c: "side_required", label: "Side required?", type: "yesno" }] },
+  { key: "sides", tab: "EventSides", label: "Event Sides", idCol: "side_id", items: (c) => c.eventSides,
+    title: (r) => r.name, sub: (r, c) => "Event: " + look.event(c, r.event_id),
+    fields: [{ c: "name", label: "Side name" }, { c: "event_id", label: "Event", type: "select", options: (c) => (c.events || []).map((x) => ({ value: x.event_id, label: x.name })) }] },
+];
+
+/* A generic add/edit form built from a category's field spec. */
+function RecordForm({ cat, config, initial, onCancel, onSaved }) {
+  const [vals, setVals] = useState(() => {
+    const v = {}; (cat.fields || []).forEach((f) => { v[f.c] = initial ? (initial[f.c] != null ? initial[f.c] : "") : ""; }); return v;
+  });
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState("");
+  const set = (c, val) => setVals((s) => ({ ...s, [c]: val }));
+
+  async function save() {
+    setSaving(true); setErr("");
+    const row = { ...vals, active: "yes" };
+    if (initial && initial[cat.idCol]) row[cat.idCol] = initial[cat.idCol];
+    try {
+      const r = await apiPost({ action: "saveRecord", tab: cat.tab, row });
+      if (r && r.ok) await onSaved();
+      else setErr((r && r.error) || "Save failed");
+    } catch (e) { setErr("Network error — are you online?"); }
+    finally { setSaving(false); }
+  }
+
+  return (
+    <>
+      <TopBar left={<button onClick={onCancel}>‹</button>} center={(initial ? "Edit " : "Add ") + cat.label.replace(/s$/, "")} />
+      <div className="flex h-full flex-col gap-3 overflow-auto p-4">
+        {(cat.fields || []).map((f) => (
+          <div key={f.c}>
+            <label className="text-[11px] font-bold uppercase tracking-wide text-slate-400">{f.label}</label>
+            {f.type === "select" ? (
+              <select value={vals[f.c]} onChange={(e) => set(f.c, e.target.value)} className="mt-1 w-full rounded-xl border border-slate-300 bg-white p-3 text-sm">
+                <option value="">{f.blank || "— choose —"}</option>
+                {f.options(config).map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+            ) : f.type === "yesno" ? (
+              <select value={vals[f.c]} onChange={(e) => set(f.c, e.target.value)} className="mt-1 w-full rounded-xl border border-slate-300 bg-white p-3 text-sm">
+                <option value="yes">Yes</option>
+                <option value="no">No</option>
+              </select>
+            ) : (
+              <input value={vals[f.c]} onChange={(e) => set(f.c, e.target.value)} className="mt-1 w-full rounded-xl border border-slate-300 p-3 text-sm" />
+            )}
+          </div>
+        ))}
+        {err && <div className="rounded-lg bg-red-50 p-2 text-xs text-red-600">{err}</div>}
+        <div className="mt-auto"><BigButton color="green" onClick={save} disabled={saving}>{saving ? "Saving…" : "Save"}</BigButton></div>
+      </div>
+    </>
+  );
+}
+
+/* Admin: a menu of categories, then an editable list per category. */
+function AdminScreen({ config, onBack, refreshConfig }) {
+  const [catKey, setCatKey] = useState(null);
+  const [editing, setEditing] = useState(null); // null | 'new' | row object
+  const [settingsRow, setSettingsRow] = useState(null); // {key,value} when editing a setting
+
+  // ---- menu ----
+  if (!catKey) {
+    return (
+      <>
+        <TopBar left={<button onClick={onBack}>‹</button>} center="Settings" />
+        <div className="space-y-2 overflow-auto p-3">
+          <p className="px-1 text-[11px] text-slate-400">Edit anything — it saves straight to the backend. Nothing is hard-coded.</p>
+          {ADMIN_CATS.map((cat) => (
+            <button key={cat.key} onClick={() => setCatKey(cat.key)} className="flex w-full items-center justify-between rounded-xl border border-slate-200 bg-white p-3 text-left">
+              <span className="font-bold text-slate-800">{cat.label}</span>
+              <span className="text-slate-300">›</span>
+            </button>
+          ))}
+          <button onClick={() => setCatKey("settings")} className="flex w-full items-center justify-between rounded-xl border border-slate-200 bg-white p-3 text-left">
+            <span className="font-bold text-slate-800">Scoring, schedule &amp; legend</span>
+            <span className="text-slate-300">›</span>
+          </button>
+        </div>
+      </>
+    );
+  }
+
+  // ---- settings (key/value) ----
+  if (catKey === "settings") {
+    const entries = Object.keys(config.settings || {}).map((k) => ({ key: k, value: config.settings[k] }));
+    if (settingsRow) {
+      return (
+        <>
+          <TopBar left={<button onClick={() => setSettingsRow(null)}>‹</button>} center={settingsRow.key} />
+          <SettingEditor row={settingsRow} onCancel={() => setSettingsRow(null)} onSaved={async () => { await refreshConfig(); setSettingsRow(null); }} />
+        </>
+      );
+    }
+    return (
+      <>
+        <TopBar left={<button onClick={() => setCatKey(null)}>‹</button>} center="Scoring / Schedule / Legend" />
+        <div className="space-y-2 overflow-auto p-3">
+          {entries.map((e) => (
+            <button key={e.key} onClick={() => setSettingsRow(e)} className="flex w-full items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white p-3 text-left">
+              <span className="min-w-0">
+                <span className="block text-[11px] font-bold uppercase tracking-wide text-slate-400">{e.key}</span>
+                <span className="block truncate text-sm text-slate-700">{String(e.value)}</span>
+              </span>
+              <span className="text-xs font-semibold text-sky-600">Edit</span>
+            </button>
+          ))}
+        </div>
+      </>
+    );
+  }
+
+  const cat = ADMIN_CATS.find((x) => x.key === catKey);
+  if (editing) {
+    return <RecordForm cat={cat} config={config} initial={editing === "new" ? null : editing}
+      onCancel={() => setEditing(null)} onSaved={async () => { await refreshConfig(); setEditing(null); }} />;
+  }
+
+  const rows = (cat.items(config) || []);
+  async function remove(row) {
+    if (!window.confirm("Remove " + cat.title(row) + "?")) return;
+    try { await apiPost({ action: "removeRecord", tab: cat.tab, id: row[cat.idCol] }); await refreshConfig(); } catch (e) {}
+  }
+
+  return (
+    <>
+      <TopBar left={<button onClick={() => setCatKey(null)}>‹</button>} center={cat.label} />
+      <div className="space-y-2 overflow-auto p-3">
+        {rows.map((r) => (
+          <div key={r[cat.idCol]} className="flex items-center justify-between rounded-xl border border-slate-200 bg-white p-3">
+            <div className="min-w-0">
+              <div className="truncate font-bold text-slate-800">{cat.title(r)}</div>
+              {cat.sub(r, config) && <div className="truncate text-[11px] text-slate-400">{cat.sub(r, config)}</div>}
+            </div>
+            <div className="flex shrink-0 items-center gap-3">
+              <button onClick={() => setEditing(r)} className="text-sm font-semibold text-sky-600">Edit</button>
+              <button onClick={() => remove(r)} className="text-red-500">✕</button>
+            </div>
+          </div>
+        ))}
+        {rows.length === 0 && <p className="p-2 text-sm text-slate-400">None yet.</p>}
+        <button onClick={() => setEditing("new")} className="w-full rounded-xl border-2 border-dashed border-slate-300 py-3 text-sm font-semibold text-slate-500">+ Add {cat.label.replace(/s$/, "")}</button>
+      </div>
+    </>
+  );
+}
+
+/* Edit a single Settings value. */
+function SettingEditor({ row, onCancel, onSaved }) {
+  const [value, setValue] = useState(String(row.value));
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState("");
+  async function save() {
+    setSaving(true); setErr("");
+    try {
+      const r = await apiPost({ action: "saveRecord", tab: "Settings", row: { key: row.key, value } });
+      if (r && r.ok) await onSaved(); else setErr((r && r.error) || "Save failed");
+    } catch (e) { setErr("Network error"); } finally { setSaving(false); }
+  }
+  return (
+    <div className="flex h-full flex-col gap-3 p-4">
+      <label className="text-[11px] font-bold uppercase tracking-wide text-slate-400">{row.key}</label>
+      <textarea value={value} onChange={(e) => setValue(e.target.value)} rows={3} className="w-full rounded-xl border border-slate-300 p-3 text-sm" />
+      {err && <div className="rounded-lg bg-red-50 p-2 text-xs text-red-600">{err}</div>}
+      <div className="mt-auto"><BigButton color="green" onClick={save} disabled={saving}>{saving ? "Saving…" : "Save"}</BigButton></div>
+    </div>
+  );
+}
+
 /* ================================= App ================================== */
 
-const PHASE = { LOADING: "loading", SETUP_URL: "setupUrl", LOGIN: "login", TOPIC: "topic", SESSION: "session", COMPANY: "company", CHART: "chart", GRADE: "grade", ROUNDEND: "roundend" };
+const PHASE = { LOADING: "loading", SETUP_URL: "setupUrl", LOGIN: "login", HUB: "hub", ADMIN: "admin", TOPIC: "topic", SESSION: "session", COMPANY: "company", ORDER: "order", GRADE: "grade", ROUNDEND: "roundend" };
 
 function App() {
   const [phase, setPhase] = useState(PHASE.LOADING);
@@ -525,11 +752,11 @@ function App() {
   const [sides, setSides] = useState({});
   const [companyIds, setCompanyIds] = useState([]);
   const [sessionId, setSessionId] = useState(null);
-  const [gradedIds, setGradedIds] = useState([]);     // recruits already graded this round
-  const [roundGroups, setRoundGroups] = useState([]); // groups submitted this round (for replay)
+  const [roundGroups, setRoundGroups] = useState([]); // the canonical plan for this round
+  const [plan, setPlan] = useState([]);               // groups we're currently grading through
+  const [planIndex, setPlanIndex] = useState(0);
   const [currentGroup, setCurrentGroup] = useState(null);
   const [groupNumber, setGroupNumber] = useState(1);
-  const [replayQueue, setReplayQueue] = useState(null); // groups to re-grade (same/swap)
   const [busy, setBusy] = useState(false);
 
   /* ---- boot: decide first screen, load config, start queue flushing ---- */
@@ -548,21 +775,26 @@ function App() {
 
   async function bootWithConfig() {
     // Show cached immediately (offline-friendly), then refresh in the background.
-    if (config) setPhase(grader ? PHASE.TOPIC : PHASE.LOGIN);
+    if (config) setPhase(grader ? PHASE.HUB : PHASE.LOGIN);
     try {
       const r = await apiGet({ action: "config" });
-      if (r && r.ok) { setConfig(r.config); LS.set(KEYS.config, r.config); if (!config) setPhase(grader ? PHASE.TOPIC : PHASE.LOGIN); }
+      if (r && r.ok) { setConfig(r.config); LS.set(KEYS.config, r.config); if (!config) setPhase(grader ? PHASE.HUB : PHASE.LOGIN); }
       else if (!config) setLoadErr("Backend reachable but returned an error.");
     } catch (e) {
       if (!config) { setLoadErr("Can't reach the backend and there's no saved copy yet. Connect once online."); }
     }
   }
 
+  // Pull fresh config (used after an admin edit).
+  async function refreshConfig() {
+    try { const r = await apiGet({ action: "config" }); if (r && r.ok) { setConfig(r.config); LS.set(KEYS.config, r.config); } } catch (e) {}
+  }
+
   function logout() { LS.del(KEYS.grader); setGrader(null); resetSession(); setPhase(PHASE.LOGIN); }
-  function resetSession() { setTopic(null); setSides({}); setCompanyIds([]); setSessionId(null); setGradedIds([]); setRoundGroups([]); setCurrentGroup(null); setGroupNumber(1); setReplayQueue(null); }
+  function resetSession() { setTopic(null); setSides({}); setCompanyIds([]); setSessionId(null); setRoundGroups([]); setPlan([]); setPlanIndex(0); setCurrentGroup(null); setGroupNumber(1); }
 
   /* ---- flow handlers ---- */
-  function handleLogin(g) { setGrader(g); LS.set(KEYS.grader, g); setPhase(PHASE.TOPIC); }
+  function handleLogin(g) { setGrader(g); LS.set(KEYS.grader, g); setPhase(PHASE.HUB); }
   function pickTopic(t) { setTopic(t); setPhase(PHASE.SESSION); }
   function lockSides(s) { setSides(s); setPhase(PHASE.COMPANY); }
   function pickCompanies(ids) {
@@ -570,12 +802,22 @@ function App() {
     const sid = uuid(); setSessionId(sid);
     // best-effort session start (audit only; safe to fail offline)
     apiPost({ action: "startSession", session_id: sid, grader_id: grader.grader_id, topic_id: topic.topic_id, company_ids: ids }).catch(() => {});
-    setGradedIds([]); setRoundGroups([]); setGroupNumber(1);
-    setPhase(PHASE.CHART);
+    setRoundGroups([]); setPhase(PHASE.ORDER);
   }
-  function startGroup(group) { setCurrentGroup(group); setPhase(PHASE.GRADE); }
 
-  /* Save a graded group: build items, queue + send. Always succeeds locally. */
+  // From the sorted roster: build groups of N and start grading the first.
+  function startGrading(orderedIds) {
+    const events = eventsForTopic(config, topic.topic_id);
+    const groups = buildGroups(orderedIds, events, sides, config);
+    setRoundGroups(groups);
+    beginPass(groups);
+  }
+  function beginPass(groups) {
+    setPlan(groups); setPlanIndex(0); setCurrentGroup(groups[0] || null); setGroupNumber(1);
+    setPhase(groups.length ? PHASE.GRADE : PHASE.ROUNDEND);
+  }
+
+  /* Save a graded group, then advance down the plan (or end the round). */
   async function submitGroup(resultsByEvent) {
     setBusy(true);
     const items = currentGroup.map((col) => {
@@ -595,33 +837,20 @@ function App() {
     setPending(getQueue().length);
     setBusy(false);
 
-    // bookkeeping for this round
-    if (replayQueue) {
-      const rest = replayQueue.slice(1);
-      if (rest.length) { setReplayQueue(rest); setCurrentGroup(rest[0]); setGroupNumber((n) => n + 1); }
-      else { setReplayQueue(null); setPhase(PHASE.ROUNDEND); }
+    // advance to the next group down the list
+    if (planIndex < plan.length - 1) {
+      const next = planIndex + 1;
+      setPlanIndex(next); setCurrentGroup(plan[next]); setGroupNumber((n) => n + 1);
     } else {
-      setRoundGroups((g) => [...g, currentGroup]);
-      setGradedIds((ids) => [...ids, ...currentGroup.map((c) => c.recruit_id)]);
-      setGroupNumber((n) => n + 1);
-      setCurrentGroup(null);
-      setPhase(PHASE.CHART);
+      setCurrentGroup(null); setPhase(PHASE.ROUNDEND);
     }
   }
 
-  function finishRound() { setPhase(PHASE.ROUNDEND); }
-  function runSame() { if (!roundGroups.length) return; setReplayQueue(roundGroups); setCurrentGroup(roundGroups[0]); setGroupNumber(1); setPhase(PHASE.GRADE); }
-  function runSwap() {
-    if (!roundGroups.length) return;
-    const flipped = roundGroups.map((group) => {
-      const recruits = group.map((c) => c.recruit_id).reverse(); // reverse who's on each column
-      return group.map((col, i) => ({ ...col, recruit_id: recruits[i] }));
-    });
-    setReplayQueue(flipped); setCurrentGroup(flipped[0]); setGroupNumber(1); setPhase(PHASE.GRADE);
-  }
+  function runSame() { if (roundGroups.length) beginPass(roundGroups); }
+  function runSwap() { if (roundGroups.length) beginPass(roundGroups.map(reversePairing)); }
   function endSession() {
     if (sessionId) apiPost({ action: "endSession", session_id: sessionId }).catch(() => {});
-    resetSession(); setPhase(PHASE.TOPIC);
+    resetSession(); setPhase(PHASE.HUB);
   }
 
   /* ---------------------------- render ---------------------------- */
@@ -630,11 +859,13 @@ function App() {
   else if (phase === PHASE.SETUP_URL) body = <SetupUrlScreen onSaved={() => { setLoadErr(""); setPhase(PHASE.LOADING); bootWithConfig(); }} />;
   else if (phase === PHASE.LOGIN) body = <LoginScreen onLogin={handleLogin} />;
   else if (!config) body = <Spinner label={loadErr || "Loading config…"} />;
-  else if (phase === PHASE.TOPIC) body = <TopicScreen config={config} onBack={logout} onPick={pickTopic} />;
+  else if (phase === PHASE.HUB) body = <HubScreen grader={grader} onGrade={() => setPhase(PHASE.TOPIC)} onSettings={() => setPhase(PHASE.ADMIN)} />;
+  else if (phase === PHASE.ADMIN) body = <AdminScreen config={config} onBack={() => setPhase(PHASE.HUB)} refreshConfig={refreshConfig} />;
+  else if (phase === PHASE.TOPIC) body = <TopicScreen config={config} onBack={() => setPhase(PHASE.HUB)} onPick={pickTopic} />;
   else if (phase === PHASE.SESSION) body = <SessionSetupScreen config={config} topic={topic} onBack={() => setPhase(PHASE.TOPIC)} onNext={lockSides} />;
   else if (phase === PHASE.COMPANY) body = <CompanyScreen config={config} onBack={() => setPhase(PHASE.SESSION)} onNext={pickCompanies} />;
-  else if (phase === PHASE.CHART) body = <ChartScreen config={config} topic={topic} sides={sides} companyIds={companyIds} gradedIds={gradedIds} groupNumber={groupNumber} onBack={() => setPhase(PHASE.COMPANY)} onStart={startGroup} onFinishRound={finishRound} />;
-  else if (phase === PHASE.GRADE) body = <GradeScreen config={config} group={currentGroup} groupNumber={groupNumber} busy={busy} onBack={() => setPhase(replayQueue ? PHASE.ROUNDEND : PHASE.CHART)} onSubmit={submitGroup} />;
+  else if (phase === PHASE.ORDER) body = <OrderScreen config={config} topic={topic} sides={sides} companyIds={companyIds} onBack={() => setPhase(PHASE.COMPANY)} onStart={startGrading} />;
+  else if (phase === PHASE.GRADE) body = <GradeScreen key={"g" + groupNumber} config={config} group={currentGroup} groupNumber={groupNumber} busy={busy} onBack={() => setPhase(PHASE.ORDER)} onSubmit={submitGroup} />;
   else if (phase === PHASE.ROUNDEND) body = <RoundEndScreen count={roundGroups.length} onSame={runSame} onSwap={runSwap} onEnd={endSession} />;
 
   const showStatus = phase !== PHASE.SETUP_URL && phase !== PHASE.LOADING;

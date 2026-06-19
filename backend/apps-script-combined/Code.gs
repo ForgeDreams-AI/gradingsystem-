@@ -1,19 +1,14 @@
 /**
  * Code.gs — COMBINED single-file build of the grading backend.
  * ----------------------------------------------------------------------------
- * This is every backend file concatenated into one, so you can paste it once
- * into the Apps Script editor. It behaves identically to the organized files in
- * backend/apps-script/ (Apps Script shares one global scope across files).
- *
- * Prefer editing the SPLIT files in backend/apps-script/ — they're easier to
- * navigate — then re-bundle. This combined file is just for quick setup.
+ * Every backend file concatenated into one for one-paste setup. Identical
+ * behavior to the split files in backend/apps-script/ (one global scope).
+ * Prefer editing the split files, then re-bundle.
  * ----------------------------------------------------------------------------
  */
 
 
-/* ===========================================================================
-   01_Schema.gs
-   =========================================================================== */
+/* ===== 01_Schema.gs ===== */
 
 /**
  * 01_Schema.gs
@@ -127,9 +122,7 @@ var BAND_COLORS = {
   red:    { color: '#dc2626', text: '#ffffff', label: 'Below standard' }
 };
 
-/* ===========================================================================
-   02_Setup.gs
-   =========================================================================== */
+/* ===== 02_Setup.gs ===== */
 
 /**
  * 02_Setup.gs
@@ -248,9 +241,7 @@ function seedSampleData() {
   Logger.log('✅ seedSampleData complete. Test grader PIN = 1234.');
 }
 
-/* ===========================================================================
-   03_Utils.gs
-   =========================================================================== */
+/* ===== 03_Utils.gs ===== */
 
 /**
  * 03_Utils.gs
@@ -366,9 +357,7 @@ function esc_(str) {
     .replace(/>/g, '&gt;');
 }
 
-/* ===========================================================================
-   04_Config.gs
-   =========================================================================== */
+/* ===== 04_Config.gs ===== */
 
 /**
  * 04_Config.gs
@@ -429,9 +418,7 @@ function rosterFor_(companyIds) {
   }));
 }
 
-/* ===========================================================================
-   05_Api.gs
-   =========================================================================== */
+/* ===== 05_Api.gs ===== */
 
 /**
  * 05_Api.gs
@@ -491,6 +478,8 @@ function doPost(e) {
       case 'submitGroup':  return json_(submitGroup_(body));
       case 'swapCompany':  return json_(swapCompany_(body));
       case 'endSession':   return json_(endSession_(body));
+      case 'saveRecord':   return json_(saveRecord_(body));    // admin add/edit
+      case 'removeRecord': return json_(removeRecord_(body));  // admin deactivate
       default:             return json_({ ok: false, error: 'Unknown POST action: ' + body.action });
     }
   } catch (err) {
@@ -505,9 +494,7 @@ function json_(obj) {
     .setMimeType(ContentService.MimeType.JSON);
 }
 
-/* ===========================================================================
-   06_Auth.gs
-   =========================================================================== */
+/* ===== 06_Auth.gs ===== */
 
 /**
  * 06_Auth.gs
@@ -535,9 +522,7 @@ function login_(body) {
   return { ok: true, grader: { grader_id: grader.grader_id, name: grader.name } };
 }
 
-/* ===========================================================================
-   07_Sessions.gs
-   =========================================================================== */
+/* ===== 07_Sessions.gs ===== */
 
 /**
  * 07_Sessions.gs
@@ -599,9 +584,7 @@ function endSession_(body) {
   return { ok: true };
 }
 
-/* ===========================================================================
-   08_Submit.gs
-   =========================================================================== */
+/* ===== 08_Submit.gs ===== */
 
 /**
  * 08_Submit.gs
@@ -725,9 +708,7 @@ function makeAttemptCounter_(allEvals) {
   };
 }
 
-/* ===========================================================================
-   09_Scoring.gs
-   =========================================================================== */
+/* ===== 09_Scoring.gs ===== */
 
 /**
  * 09_Scoring.gs
@@ -786,9 +767,7 @@ function bandObj_(key) {
   return { key: key, color: c.color, text: c.text, label: c.label };
 }
 
-/* ===========================================================================
-   10_Reporting.gs
-   =========================================================================== */
+/* ===== 10_Reporting.gs ===== */
 
 /**
  * 10_Reporting.gs
@@ -1099,9 +1078,7 @@ function companyReportHtml_(title, companies, ctx, weekEvals, showLowFlag, weekS
   return h;
 }
 
-/* ===========================================================================
-   11_Email.gs
-   =========================================================================== */
+/* ===== 11_Email.gs ===== */
 
 /**
  * 11_Email.gs
@@ -1171,9 +1148,7 @@ function logSend_(runDate, type, id, email, status, detail) {
   });
 }
 
-/* ===========================================================================
-   12_Triggers.gs
-   =========================================================================== */
+/* ===== 12_Triggers.gs ===== */
 
 /**
  * 12_Triggers.gs
@@ -1224,4 +1199,67 @@ function removeDailyTriggers_() {
 /** Manual test: run the report job right now. */
 function runReportsNow() {
   sendDailyReports();
+}
+
+/* ===== 13_Admin.gs ===== */
+
+/**
+ * 13_Admin.gs
+ * =============================================================================
+ * Lets the in-app Settings screens add/edit/remove config rows. Only the CONFIG
+ * tabs below are writable — the data tabs (Evaluations, Sessions, …) can never
+ * be touched this way, so the permanent record stays immutable.
+ *
+ * saveRecord_   — insert a new row, or update an existing one (matched by its
+ *                 id column). New rows get a generated id automatically.
+ * removeRecord_ — soft-delete: sets the row's `active` column to "no" (keeps
+ *                 history and avoids breaking references).
+ * =============================================================================
+ */
+
+/** The only tabs the admin UI is allowed to write to. */
+var ADMIN_WRITE_TABS = ['Companies', 'Captains', 'HigherUps', 'Recruits', 'Topics', 'Events', 'EventSides', 'FailReasons', 'Graders', 'Settings'];
+
+/** body = { tab, row }. Upserts the row. */
+function saveRecord_(body) {
+  var tab = body.tab;
+  var row = body.row || {};
+  if (ADMIN_WRITE_TABS.indexOf(tab) < 0) return { ok: false, error: 'Tab not editable: ' + tab };
+
+  var lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    // Settings is keyed by `key`; every other tab by its first column (the id).
+    var keyCol = (tab === 'Settings') ? 'key' : SCHEMA[tab][0];
+
+    // New record on a non-Settings tab: mint an id if none was supplied.
+    if (tab !== 'Settings' && !row[keyCol]) row[keyCol] = uuid_();
+    if (tab === 'Settings' && !row.key) return { ok: false, error: 'Setting key required' };
+
+    var existing = readRows_(tab).filter(function (r) { return String(r[keyCol]) === String(row[keyCol]); })[0];
+
+    if (existing) {
+      // Update only the columns we were given (that actually exist on the tab).
+      Object.keys(row).forEach(function (c) {
+        if (SCHEMA[tab].indexOf(c) >= 0) updateCell_(tab, existing, c, row[c]);
+      });
+    } else {
+      appendRow_(tab, row);
+    }
+    return { ok: true, id: row[keyCol] };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/** body = { tab, id }. Soft-deletes by setting active = "no". */
+function removeRecord_(body) {
+  var tab = body.tab;
+  if (ADMIN_WRITE_TABS.indexOf(tab) < 0) return { ok: false, error: 'Tab not editable: ' + tab };
+  var idCol = SCHEMA[tab][0];
+  var r = readRows_(tab).filter(function (x) { return String(x[idCol]) === String(body.id); })[0];
+  if (!r) return { ok: false, error: 'Record not found' };
+  if (SCHEMA[tab].indexOf('active') >= 0) updateCell_(tab, r, 'active', 'no');
+  else return { ok: false, error: 'This tab has no active column to deactivate' };
+  return { ok: true };
 }

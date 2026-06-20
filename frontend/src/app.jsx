@@ -791,9 +791,17 @@ function AdminScreen({ config, onBack, refreshConfig }) {
             <span className="font-bold text-slate-800">Scoring, schedule &amp; legend</span>
             <span className="text-slate-300">›</span>
           </button>
+          <button onClick={() => setCatKey("backend")} className="flex w-full items-center justify-between rounded-xl border border-slate-200 bg-white p-3 text-left">
+            <span className="font-bold text-slate-800">Backend connection / test</span>
+            <span className="text-slate-300">›</span>
+          </button>
         </div>
       </>
     );
+  }
+
+  if (catKey === "backend") {
+    return <BackendScreen onBack={() => setCatKey(null)} />;
   }
 
   // ---- settings (key/value) ----
@@ -855,6 +863,54 @@ function AdminScreen({ config, onBack, refreshConfig }) {
         ))}
         {rows.length === 0 && <p className="p-2 text-sm text-slate-400">None yet.</p>}
         <button onClick={() => setEditing("new")} className="w-full rounded-xl border-2 border-dashed border-slate-300 py-3 text-sm font-semibold text-slate-500">+ Add {cat.label.replace(/s$/, "")}</button>
+      </div>
+    </>
+  );
+}
+
+/* Shows the current backend URL, lets you change it, and PROBES whether the
+ * live deployment actually has the admin endpoints (so you can tell if you're
+ * pointed at an old deployment). */
+function BackendScreen({ onBack }) {
+  const [url, setUrl] = useState(apiBase());
+  const [status, setStatus] = useState(null); // { kind, text }
+  const [busy, setBusy] = useState(false);
+
+  function saveUrl() { LS.set(KEYS.apiBase, url.trim()); setStatus({ kind: "info", text: "URL saved. Now tap Test." }); }
+
+  async function test() {
+    setBusy(true); setStatus({ kind: "info", text: "Testing…" });
+    LS.set(KEYS.apiBase, url.trim());
+    const ping = await apiGet({ action: "ping" });
+    if (!(ping && ping.ok)) {
+      setBusy(false);
+      setStatus({ kind: "bad", text: "Can't reach this URL. Make sure it's the Web app /exec URL and 'Who has access' is Anyone. (" + (ping && ping.error ? ping.error : "no response") + ")" });
+      return;
+    }
+    // Probe saveRecord with an invalid tab: the NEW backend answers
+    // "Tab not editable"; an OLD deployment answers "Unknown POST action".
+    const probe = await apiPost({ action: "saveRecord", tab: "__probe__", row: {} });
+    setBusy(false);
+    const err = (probe && probe.error) || "";
+    if (/not editable/i.test(err)) setStatus({ kind: "good", text: "Connected — and the admin endpoints are LIVE. Saving will work. ✅" });
+    else if (/unknown post action/i.test(err)) setStatus({ kind: "bad", text: "Connected, but THIS URL is running OLD code (no saveRecord). In Apps Script: Deploy → Manage deployments → ✏️ Edit → Version: New version → Deploy. Also confirm this is the same Web app URL shown there." });
+    else setStatus({ kind: "info", text: "Reached backend. Response: " + (err || "ok") });
+  }
+
+  const color = status ? (status.kind === "good" ? "bg-green-50 text-green-700" : status.kind === "bad" ? "bg-red-50 text-red-700" : "bg-slate-100 text-slate-600") : "";
+
+  return (
+    <>
+      <TopBar left={<button onClick={onBack}>‹</button>} center="Backend connection" />
+      <div className="flex h-full flex-col gap-3 overflow-auto p-4">
+        <label className="text-[11px] font-bold uppercase tracking-wide text-slate-400">Web app /exec URL</label>
+        <textarea value={url} onChange={(e) => setUrl(e.target.value)} rows={3} className="w-full rounded-xl border border-slate-300 p-3 text-xs" />
+        <div className="flex gap-2">
+          <button onClick={saveUrl} className="flex-1 rounded-xl border-2 border-slate-300 bg-white py-3 text-sm font-bold text-slate-700">Save URL</button>
+          <button onClick={test} disabled={busy} className="flex-1 rounded-xl bg-slate-900 py-3 text-sm font-bold text-white">{busy ? "Testing…" : "Test"}</button>
+        </div>
+        {status && <div className={`rounded-xl p-3 text-xs ${color}`}>{status.text}</div>}
+        <p className="text-[11px] text-slate-400">Tip: in Apps Script, <b>Deploy → Manage deployments</b> shows the live Web app URL. It should match the one above. If you ever made a “New deployment”, you may have two URLs — use the one you redeployed.</p>
       </div>
     </>
   );

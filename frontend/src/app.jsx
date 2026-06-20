@@ -145,11 +145,14 @@ function TopBar({ left, center, right }) {
   );
 }
 
-/* Always-visible strip: who's logged in, online/offline, and pending count. */
-function StatusStrip({ grader, online, pending, onLogout }) {
+/* Always-visible strip: who's logged in, a Home button, online/offline, pending. */
+function StatusStrip({ grader, online, pending, onLogout, onHome }) {
   return (
     <div className="flex items-center justify-between bg-slate-100 px-3 py-1.5 text-[11px] text-slate-600">
-      <span className="font-semibold">{grader ? grader.name : "—"}</span>
+      <span className="flex items-center gap-2">
+        {onHome && <button onClick={onHome} className="rounded-md bg-white px-2 py-1 text-sm font-bold text-slate-700 shadow-sm active:scale-95">🏠 Home</button>}
+        <span className="font-semibold">{grader ? grader.name : "—"}</span>
+      </span>
       <span className="flex items-center gap-3">
         {pending > 0 && <span className="rounded-full bg-amber-100 px-2 py-0.5 font-bold text-amber-700">⏳ {pending} to sync</span>}
         <span className={`flex items-center gap-1 font-bold ${online ? "text-green-600" : "text-red-500"}`}>
@@ -244,7 +247,7 @@ function TopicScreen({ config, onBack, onPick }) {
   const topics = (config.topics || []);
   return (
     <>
-      <TopBar left={<button onClick={onBack}>‹</button>} center="Pick Topic" />
+      <TopBar left={<button onClick={onBack} className="px-3 py-1 text-3xl font-bold leading-none active:opacity-60">‹</button>} center="Pick Topic" />
       <div className="space-y-3 p-4">
         <p className="text-xs text-slate-400">Choose what you're grading.</p>
         {topics.length === 0 && <p className="text-sm text-slate-400">No topics set up yet. Add some in the Sheet.</p>}
@@ -261,7 +264,7 @@ function SessionSetupScreen({ config, topic, onBack, onNext }) {
   const ready = events.every((ev) => !isYes(ev.side_required) || sides[ev.event_id]);
   return (
     <>
-      <TopBar left={<button onClick={onBack}>‹</button>} center="Session Setup" />
+      <TopBar left={<button onClick={onBack} className="px-3 py-1 text-3xl font-bold leading-none active:opacity-60">‹</button>} center="Session Setup" />
       <div className="flex h-full flex-col p-4">
         <p className="mb-3 text-xs text-slate-400">Lock this session's sides. Stays fixed until the session ends.</p>
         <div className="space-y-3">
@@ -302,7 +305,7 @@ function CompanyScreen({ config, onBack, onNext }) {
   const toggle = (id) => setSel((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
   return (
     <>
-      <TopBar left={<button onClick={onBack}>‹</button>} center="Pick Companies" />
+      <TopBar left={<button onClick={onBack} className="px-3 py-1 text-3xl font-bold leading-none active:opacity-60">‹</button>} center="Pick Companies" />
       <div className="flex h-full flex-col p-4">
         <p className="mb-3 text-xs text-slate-400">Multi-select. Rosters combine into one chart.</p>
         <div className="space-y-3 overflow-auto">
@@ -400,7 +403,7 @@ function ChartScreen({ config, topic, sides, companyIds, pool, initialQueue, gra
 
   return (
     <>
-      <TopBar left={<button onClick={onBack}>‹</button>} center={resuming ? "Edit Groups" : "Build Groups"} right={totalGroups + " grp"} />
+      <TopBar left={<button onClick={onBack} className="px-3 py-1 text-3xl font-bold leading-none active:opacity-60">‹</button>} center={resuming ? "Edit Groups" : "Build Groups"} right={totalGroups + " grp"} />
       <div className="flex h-full flex-col overflow-hidden p-3">
         <p className="mb-2 text-[11px] text-slate-400">{resuming ? "Edit the remaining groups — swap, drop anyone who left, or add someone for a 2nd attempt." : "Tap a column, then a name."} <b>Add group</b> queues it. List sorted A–Z · # = engine. ✓ = already graded.</p>
 
@@ -546,7 +549,7 @@ function GradeScreen({ config, group, groupNumber, onEdit, onSwap, onSubmit, bus
 
   return (
     <>
-      <TopBar left={<button onClick={onEdit}>‹ Edit</button>} center={"Grade · Group " + groupNumber} right={idx + 1 + "/" + group.length} />
+      <TopBar left={<button onClick={onEdit} className="px-2 py-1 text-xl font-bold leading-none active:opacity-60">‹ Edit</button>} center={"Grade · Group " + groupNumber} right={idx + 1 + "/" + group.length} />
       <div className="flex h-full flex-col p-4">
         <div className="mb-3 flex gap-2">
           {group.map((c, i) => {
@@ -741,7 +744,7 @@ function RecordForm({ cat, config, initial, onCancel, onSaved }) {
 
   return (
     <>
-      <TopBar left={<button onClick={onCancel}>‹</button>} center={(initial ? "Edit " : "Add ") + cat.label.replace(/s$/, "")} />
+      <TopBar left={<button onClick={onCancel} className="px-3 py-1 text-3xl font-bold leading-none active:opacity-60">‹</button>} center={(initial ? "Edit " : "Add ") + cat.label.replace(/s$/, "")} />
       <div className="flex h-full flex-col gap-3 overflow-auto p-4">
         {(cat.fields || []).map((f) => (
           <div key={f.c}>
@@ -768,6 +771,74 @@ function RecordForm({ cat, config, initial, onCancel, onSaved }) {
   );
 }
 
+/* Fail reasons, organized by event: pick an event (or Global), then add/remove
+ * its reason buttons. */
+function ReasonsAdmin({ config, onBack, refreshConfig }) {
+  const [scope, setScope] = useState(null); // null = pick; "global" or an event_id
+  const [label, setLabel] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const events = (config.events || []);
+  const reasonsFor = (sc) => (config.failReasons || []).filter((r) => (sc === "global" ? !r.event_id : String(r.event_id) === String(sc)));
+
+  async function add() {
+    const text = label.trim(); if (!text) return;
+    setBusy(true);
+    await apiPost({ action: "saveRecord", tab: "FailReasons", row: { label: text, event_id: scope === "global" ? "" : scope, active: "yes" } });
+    await refreshConfig(); setLabel(""); setBusy(false);
+  }
+  async function remove(r) {
+    await apiPost({ action: "removeRecord", tab: "FailReasons", id: r.reason_id });
+    await refreshConfig();
+  }
+
+  // ---- pick an event ----
+  if (!scope) {
+    return (
+      <>
+        <TopBar left={<button onClick={onBack} className="px-3 py-1 text-3xl font-bold leading-none active:opacity-60">‹</button>} center="Fail Reasons" />
+        <div className="space-y-2 overflow-auto p-3">
+          <p className="px-1 text-[11px] text-slate-400">Pick where the reason buttons apply, then add/remove them.</p>
+          <button onClick={() => setScope("global")} className="flex w-full items-center justify-between rounded-xl border border-slate-200 bg-white p-3 text-left">
+            <span className="font-bold text-slate-800">Global <span className="text-[11px] font-normal text-slate-400">(any event)</span></span>
+            <span className="text-xs text-slate-400">{reasonsFor("global").length} · ›</span>
+          </button>
+          {events.map((ev) => (
+            <button key={ev.event_id} onClick={() => setScope(ev.event_id)} className="flex w-full items-center justify-between rounded-xl border border-slate-200 bg-white p-3 text-left">
+              <span className="font-bold text-slate-800">{ev.name}<span className="ml-1 text-[11px] font-normal text-slate-400">· {look.topic(config, ev.topic_id)}</span></span>
+              <span className="text-xs text-slate-400">{reasonsFor(ev.event_id).length} · ›</span>
+            </button>
+          ))}
+        </div>
+      </>
+    );
+  }
+
+  // ---- manage that scope's reasons ----
+  const scopeName = scope === "global" ? "Global" : (look.event(config, scope) || "Event");
+  const list = reasonsFor(scope);
+  return (
+    <>
+      <TopBar left={<button onClick={() => setScope(null)} className="px-3 py-1 text-3xl font-bold leading-none active:opacity-60">‹</button>} center={scopeName + " reasons"} />
+      <div className="flex h-full flex-col gap-3 overflow-auto p-3">
+        <div className="flex flex-wrap gap-2">
+          {list.map((r) => (
+            <span key={r.reason_id} className="flex items-center gap-1 rounded-full bg-slate-800 px-3 py-2 text-sm font-semibold text-white">
+              {r.label}<button onClick={() => remove(r)} className="ml-1 text-slate-300">✕</button>
+            </span>
+          ))}
+          {list.length === 0 && <span className="text-xs text-slate-400">No reasons yet.</span>}
+        </div>
+        <div className="mt-2 flex gap-2">
+          <input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="New reason…" className="flex-1 rounded-xl border border-slate-300 p-3 text-sm" />
+          <button onClick={add} disabled={busy || !label.trim()} className="rounded-xl bg-green-600 px-4 text-sm font-bold text-white disabled:opacity-40">Add</button>
+        </div>
+        <p className="text-[11px] text-slate-400">These buttons show up when a grader taps Fail or Memo on {scope === "global" ? "any event" : scopeName}.</p>
+      </div>
+    </>
+  );
+}
+
 /* Admin: a menu of categories, then an editable list per category. */
 function AdminScreen({ config, onBack, refreshConfig }) {
   const [catKey, setCatKey] = useState(null);
@@ -778,7 +849,7 @@ function AdminScreen({ config, onBack, refreshConfig }) {
   if (!catKey) {
     return (
       <>
-        <TopBar left={<button onClick={onBack}>‹</button>} center="Settings" />
+        <TopBar left={<button onClick={onBack} className="px-3 py-1 text-3xl font-bold leading-none active:opacity-60">‹</button>} center="Settings" />
         <div className="space-y-2 overflow-auto p-3">
           <p className="px-1 text-[11px] text-slate-400">Edit anything — it saves straight to the backend. Nothing is hard-coded.</p>
           {ADMIN_CATS.map((cat) => (
@@ -810,14 +881,14 @@ function AdminScreen({ config, onBack, refreshConfig }) {
     if (settingsRow) {
       return (
         <>
-          <TopBar left={<button onClick={() => setSettingsRow(null)}>‹</button>} center={settingsRow.key} />
+          <TopBar left={<button onClick={() => setSettingsRow(null)} className="px-3 py-1 text-3xl font-bold leading-none active:opacity-60">‹</button>} center={settingsRow.key} />
           <SettingEditor row={settingsRow} onCancel={() => setSettingsRow(null)} onSaved={async () => { await refreshConfig(); setSettingsRow(null); }} />
         </>
       );
     }
     return (
       <>
-        <TopBar left={<button onClick={() => setCatKey(null)}>‹</button>} center="Scoring / Schedule / Legend" />
+        <TopBar left={<button onClick={() => setCatKey(null)} className="px-3 py-1 text-3xl font-bold leading-none active:opacity-60">‹</button>} center="Scoring / Schedule / Legend" />
         <div className="space-y-2 overflow-auto p-3">
           {entries.map((e) => (
             <button key={e.key} onClick={() => setSettingsRow(e)} className="flex w-full items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white p-3 text-left">
@@ -831,6 +902,11 @@ function AdminScreen({ config, onBack, refreshConfig }) {
         </div>
       </>
     );
+  }
+
+  // Fail reasons get an event-centric page (pick an event → manage its buttons).
+  if (catKey === "reasons") {
+    return <ReasonsAdmin config={config} onBack={() => setCatKey(null)} refreshConfig={refreshConfig} />;
   }
 
   const cat = ADMIN_CATS.find((x) => x.key === catKey);
@@ -847,7 +923,7 @@ function AdminScreen({ config, onBack, refreshConfig }) {
 
   return (
     <>
-      <TopBar left={<button onClick={() => setCatKey(null)}>‹</button>} center={cat.label} />
+      <TopBar left={<button onClick={() => setCatKey(null)} className="px-3 py-1 text-3xl font-bold leading-none active:opacity-60">‹</button>} center={cat.label} />
       <div className="space-y-2 overflow-auto p-3">
         {rows.map((r) => (
           <div key={r[cat.idCol]} className="flex items-center justify-between rounded-xl border border-slate-200 bg-white p-3">
@@ -901,7 +977,7 @@ function BackendScreen({ onBack }) {
 
   return (
     <>
-      <TopBar left={<button onClick={onBack}>‹</button>} center="Backend connection" />
+      <TopBar left={<button onClick={onBack} className="px-3 py-1 text-3xl font-bold leading-none active:opacity-60">‹</button>} center="Backend connection" />
       <div className="flex h-full flex-col gap-3 overflow-auto p-4">
         <label className="text-[11px] font-bold uppercase tracking-wide text-slate-400">Web app /exec URL</label>
         <textarea value={url} onChange={(e) => setUrl(e.target.value)} rows={3} className="w-full rounded-xl border border-slate-300 p-3 text-xs" />
@@ -1110,7 +1186,7 @@ function App() {
 
   return (
     <div className="mx-auto flex h-full max-w-md flex-col bg-slate-50">
-      {showStatus && <StatusStrip grader={grader} online={online} pending={pending} onLogout={logout} />}
+      {showStatus && <StatusStrip grader={grader} online={online} pending={pending} onLogout={logout} onHome={phase !== PHASE.LOGIN && phase !== PHASE.HUB ? () => setPhase(PHASE.HUB) : null} />}
       <div className="flex min-h-0 flex-1 flex-col">{body}</div>
     </div>
   );

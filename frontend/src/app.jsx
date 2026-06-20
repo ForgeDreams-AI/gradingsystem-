@@ -307,15 +307,20 @@ function CompanyScreen({ config, onBack, onNext }) {
     <>
       <TopBar left={<button onClick={onBack} className="px-3 py-1 text-3xl font-bold leading-none active:opacity-60">‹</button>} center="Pick Companies" />
       <div className="flex h-full flex-col p-4">
-        <p className="mb-3 text-xs text-slate-400">Multi-select. Rosters combine into one chart.</p>
+        <p className="mb-3 text-xs text-slate-400">Tap in the order you want them graded — the number shows the order. People are listed by company in that order.</p>
         <div className="space-y-3 overflow-auto">
-          {companies.map((c) => (
-            <button key={c.company_id} onClick={() => toggle(c.company_id)}
-              className={`flex w-full items-center justify-between rounded-2xl border-2 p-4 text-left ${sel.includes(c.company_id) ? "border-slate-900 bg-slate-900 text-white" : "border-slate-200 bg-white"}`}>
-              <span className="font-bold">{c.name}</span>
-              <span className="text-xl">{sel.includes(c.company_id) ? "✓" : "+"}</span>
-            </button>
-          ))}
+          {companies.map((c) => {
+            const pos = sel.indexOf(c.company_id); // -1 if not selected
+            return (
+              <button key={c.company_id} onClick={() => toggle(c.company_id)}
+                className={`flex w-full items-center justify-between rounded-2xl border-2 p-4 text-left ${pos >= 0 ? "border-slate-900 bg-slate-900 text-white" : "border-slate-200 bg-white"}`}>
+                <span className="font-bold">{c.name}</span>
+                {pos >= 0
+                  ? <span className="flex h-7 w-7 items-center justify-center rounded-full bg-white text-sm font-bold text-slate-900">{pos + 1}</span>
+                  : <span className="text-xl text-slate-400">+</span>}
+              </button>
+            );
+          })}
         </div>
         <div className="mt-auto pt-4"><BigButton color="green" onClick={() => onNext(sel)} disabled={sel.length === 0}>Build Roster ({sel.length}) →</BigButton></div>
       </div>
@@ -329,6 +334,19 @@ function sortedRoster(config, companyIds) {
     (a.last_name || "").localeCompare(b.last_name || "") ||
     (a.first_name || "").localeCompare(b.first_name || "")
   ).map((r) => r.recruit_id);
+}
+
+/* Recruits ordered by COMPANY (in the order companies were picked), and A–Z
+   within each company. Used by individual grading. */
+function rosterByCompanyOrder(config, companyIds) {
+  const out = [];
+  companyIds.forEach((cid) => {
+    (config.recruits || [])
+      .filter((r) => String(r.company_id) === String(cid))
+      .sort((a, b) => (a.last_name || "").localeCompare(b.last_name || "") || (a.first_name || "").localeCompare(b.first_name || ""))
+      .forEach((r) => out.push(r.recruit_id));
+  });
+  return out;
 }
 
 /*
@@ -629,7 +647,7 @@ function topicIsIndividual(config, topicId) {
  */
 function IndividualGradeScreen({ config, topic, companyIds, onSubmitItem, onHome, onBack }) {
   const events = eventsForTopic(config, topic.topic_id);
-  const roster = sortedRoster(config, companyIds);
+  const roster = rosterByCompanyOrder(config, companyIds); // grouped by company pick-order, A–Z within
   const plan = [];
   events.forEach((ev) => roster.forEach((rid) => {
     const r = config.recruits.find((x) => x.recruit_id === rid) || {};

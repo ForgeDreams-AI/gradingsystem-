@@ -616,6 +616,106 @@ function GradeScreen({ config, group, groupNumber, onEdit, onSwap, onSubmit, bus
   );
 }
 
+/* A topic is "individual" when ALL its events are set to grade_style=individual. */
+function topicIsIndividual(config, topicId) {
+  const evs = eventsForTopic(config, topicId);
+  return evs.length > 0 && evs.every((ev) => String(ev.grade_style || "").toLowerCase() === "individual");
+}
+
+/*
+ * INDIVIDUAL grading: no groups. Just go down the roster, one person at a time,
+ * Pass / Fail / Memo. Each grade saves immediately and auto-advances. Covers
+ * every event in the topic (event by event, person by person).
+ */
+function IndividualGradeScreen({ config, topic, companyIds, onSubmitItem, onHome, onBack }) {
+  const events = eventsForTopic(config, topic.topic_id);
+  const roster = sortedRoster(config, companyIds);
+  const plan = [];
+  events.forEach((ev) => roster.forEach((rid) => {
+    const r = config.recruits.find((x) => x.recruit_id === rid) || {};
+    plan.push({ recruit_id: rid, event_id: ev.event_id, side_id: "", company_id: r.company_id || "" });
+  }));
+
+  const [idx, setIdx] = useState(0);
+  const [outcome, setOutcome] = useState(null); // 'fail'|'memo' while reasons open
+  const [reasons, setReasons] = useState([]);
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const recruitOf = (id) => config.recruits.find((r) => r.recruit_id === id) || {};
+  const engineNumOf = (id) => { const r = recruitOf(id); const c = (config.companies || []).find((x) => x.company_id === r.company_id); if (!c) return ""; const m = String(c.name).match(/\d+/); return m ? m[0] : c.name; };
+
+  // done
+  if (idx >= plan.length) {
+    return (
+      <>
+        <TopBar center="Done" />
+        <div className="flex h-full flex-col items-center justify-center gap-4 p-6 text-center">
+          <div className="text-5xl">✓</div>
+          <div className="text-lg font-bold text-slate-800">All graded</div>
+          <div className="text-xs text-slate-400">{plan.length} grade(s) saved.</div>
+          <div className="w-full space-y-2 pt-4">
+            <BigButton color="green" onClick={onBack}>Grade another company</BigButton>
+            <BigButton color="ghost" onClick={onHome}>Home</BigButton>
+          </div>
+        </div>
+      </>
+    );
+  }
+
+  const item = plan[idx];
+  const recruit = recruitOf(item.recruit_id);
+  const ev = events.find((e) => e.event_id === item.event_id) || {};
+  const reasonOpts = reasonsForEvent(config, item.event_id);
+  const toggleReason = (id) => setReasons((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
+
+  async function save(result, withReasons) {
+    setBusy(true);
+    await onSubmitItem(item, { result, reasons: withReasons ? reasons : [], note: withReasons ? note : "" });
+    setBusy(false); setOutcome(null); setReasons([]); setNote(""); setIdx(idx + 1);
+  }
+  function tap(o) { if (o === "pass") save("pass", false); else setOutcome(o); }
+
+  return (
+    <>
+      <TopBar left={<button onClick={onBack} className="px-3 py-1 text-3xl font-bold leading-none active:opacity-60">‹</button>} center={ev.name} right={idx + 1 + "/" + plan.length} />
+      <div className="flex h-full flex-col p-4">
+        <div className="h-2 w-full overflow-hidden rounded-full bg-slate-200">
+          <div className="h-full bg-slate-900" style={{ width: Math.round((idx / plan.length) * 100) + "%" }} />
+        </div>
+
+        {!outcome ? (
+          <>
+            <div className="mt-4 rounded-2xl bg-white p-4 text-center shadow">
+              <div className="text-xs uppercase tracking-wide text-slate-400">{ev.name}</div>
+              <div className="mt-1 text-2xl font-extrabold text-slate-900">{fullName(recruit)}</div>
+              <div className="text-xs text-slate-400">#{engineNumOf(item.recruit_id)}</div>
+            </div>
+            <div className="mt-6 space-y-3">
+              <BigButton color="green" onClick={() => tap("pass")} disabled={busy}>PASS</BigButton>
+              <BigButton color="red" onClick={() => tap("fail")} disabled={busy}>FAIL</BigButton>
+              <BigButton color="amber" onClick={() => tap("memo")} disabled={busy}>MEMO</BigButton>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="mt-4 text-sm font-bold text-slate-800">{fullName(recruit)} — {outcome.toUpperCase()} · reason(s)</div>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {reasonOpts.map((r) => (
+                <button key={r.reason_id} onClick={() => toggleReason(r.reason_id)}
+                  className={`rounded-full px-3 py-2 text-sm font-semibold ${reasons.includes(r.reason_id) ? "bg-slate-900 text-white" : "border border-slate-300 bg-white text-slate-700"}`}>{r.label}</button>
+              ))}
+              {reasonOpts.length === 0 && <span className="text-xs text-slate-400">No preset reasons — use the note.</span>}
+            </div>
+            <textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder="Note / other reason (optional)…" rows={3} className="mt-3 w-full rounded-xl border border-slate-300 p-3 text-sm" />
+            <div className="mt-auto"><BigButton color="slate" onClick={() => save(outcome, true)} disabled={busy}>{busy ? "Saving…" : "Save & next"}</BigButton></div>
+          </>
+        )}
+      </div>
+    </>
+  );
+}
+
 /* After finishing a round: run again, swap roles, or end. */
 function RoundEndScreen({ count, onSame, onSwap, onEnd }) {
   return (
@@ -715,7 +815,8 @@ const ADMIN_CATS = [
   { key: "events", tab: "Events", label: "Events", idCol: "event_id", items: (c) => c.events,
     title: (r) => r.name, sub: (r, c) => look.topic(c, r.topic_id) + (look.topic(c, r.topic_id) ? " · " : "") + (isYes(r.side_required) ? "side required" : "no side"),
     fields: [{ c: "name", label: "Event name" }, { c: "topic_id", label: "Topic", type: "select", options: (c) => (c.topics || []).map((x) => ({ value: x.topic_id, label: x.name })) },
-             { c: "position", label: "Order # (1,2,3…)" }, { c: "side_required", label: "Side required?", type: "yesno" }] },
+             { c: "position", label: "Order # (1,2,3…)" }, { c: "side_required", label: "Side required?", type: "yesno" },
+             { c: "grade_style", label: "Grade style", type: "select", blank: "Grouped (build groups) — default", options: () => [{ value: "group", label: "Grouped (build groups)" }, { value: "individual", label: "Individual — go down the list, pass/fail" }] }] },
   { key: "sides", tab: "EventSides", label: "Event Sides", idCol: "side_id", items: (c) => c.eventSides,
     title: (r) => r.name, sub: (r, c) => "Event: " + look.event(c, r.event_id),
     fields: [{ c: "name", label: "Side name" }, { c: "event_id", label: "Event", type: "select", options: (c) => (c.events || []).map((x) => ({ value: x.event_id, label: x.name })) }] },
@@ -1016,7 +1117,7 @@ function SettingEditor({ row, onCancel, onSaved }) {
 
 /* ================================= App ================================== */
 
-const PHASE = { LOADING: "loading", SETUP_URL: "setupUrl", LOGIN: "login", HUB: "hub", ADMIN: "admin", TOPIC: "topic", SESSION: "session", COMPANY: "company", CHART: "chart", GRADE: "grade", ROUNDEND: "roundend" };
+const PHASE = { LOADING: "loading", SETUP_URL: "setupUrl", LOGIN: "login", HUB: "hub", ADMIN: "admin", TOPIC: "topic", SESSION: "session", COMPANY: "company", CHART: "chart", GRADE: "grade", ROUNDEND: "roundend", INDIVIDUAL: "individual" };
 
 function App() {
   const [phase, setPhase] = useState(PHASE.LOADING);
@@ -1077,7 +1178,11 @@ function App() {
 
   /* ---- flow handlers ---- */
   function handleLogin(g) { setGrader(g); LS.set(KEYS.grader, g); setPhase(PHASE.HUB); }
-  function pickTopic(t) { setTopic(t); setPhase(PHASE.SESSION); }
+  function pickTopic(t) {
+    setTopic(t);
+    // Individual topics have no sides to lock → skip straight to picking companies.
+    setPhase(topicIsIndividual(config, t.topic_id) ? PHASE.COMPANY : PHASE.SESSION);
+  }
   function lockSides(s) { setSides(s); setPhase(PHASE.COMPANY); }
   function pickCompanies(ids) {
     setCompanyIds(ids);
@@ -1086,7 +1191,18 @@ function App() {
     apiPost({ action: "startSession", session_id: sid, grader_id: grader.grader_id, topic_id: topic.topic_id, company_ids: ids }).catch(() => {});
     setPool(sortedRoster(config, ids));   // sorted A–Z; the chart builds groups off this
     setGradedThisRound([]); setGradePlan([]); setGroupNumber(1); setResuming(false); setBuilderQueue([]);
-    setPhase(PHASE.CHART);
+    setPhase(topicIsIndividual(config, topic.topic_id) ? PHASE.INDIVIDUAL : PHASE.CHART);
+  }
+
+  /* Individual mode: save one person's grade for one event, immediately. */
+  async function submitIndividual(item, res) {
+    const body = { action: "submitGroup", session_id: sessionId, grader_id: grader.grader_id, client_submit_id: uuid(), items: [{
+      recruit_id: item.recruit_id, topic_id: topic.topic_id, event_id: item.event_id, side_id: "", company_id: item.company_id || "",
+      result: res.result, note: res.note || "", reasons: (res.reasons || []).map((id) => ({ reason_id: id })),
+    }] };
+    enqueueSubmit(body); setPending(getQueue().length);
+    try { await flushQueue(); } catch (e) {}
+    setPending(getQueue().length);
   }
 
   // Add/remove a company mid-session: the new roster swaps into Available.
@@ -1180,6 +1296,7 @@ function App() {
   else if (phase === PHASE.COMPANY) body = <CompanyScreen config={config} onBack={() => setPhase(PHASE.SESSION)} onNext={pickCompanies} />;
   else if (phase === PHASE.CHART) body = <ChartScreen config={config} topic={topic} sides={sides} companyIds={companyIds} pool={pool} initialQueue={builderQueue} gradedIds={gradedThisRound.reduce((a, g) => a.concat(g.map((c) => c.recruit_id)), [])} resuming={resuming} onCompaniesChange={changeCompanies} onBack={() => (resuming ? startGrading(builderQueue) : setPhase(PHASE.COMPANY))} onStartGrading={startGrading} />;
   else if (phase === PHASE.GRADE) body = <GradeScreen key={"g" + groupNumber} config={config} group={currentGroup} groupNumber={groupNumber} busy={busy} onEdit={editGroups} onSwap={swapCurrent} onSubmit={submitGroup} />;
+  else if (phase === PHASE.INDIVIDUAL) body = <IndividualGradeScreen config={config} topic={topic} companyIds={companyIds} onSubmitItem={submitIndividual} onHome={() => { resetSession(); setPhase(PHASE.HUB); }} onBack={() => setPhase(PHASE.COMPANY)} />;
   else if (phase === PHASE.ROUNDEND) body = <RoundEndScreen count={gradedThisRound.length} onSame={runSame} onSwap={runSwap} onEnd={endSession} />;
 
   const showStatus = phase !== PHASE.SETUP_URL && phase !== PHASE.LOADING;

@@ -1,10 +1,6 @@
 /**
  * Code.gs — COMBINED single-file build of the grading backend.
- * ----------------------------------------------------------------------------
- * Every backend file concatenated into one for one-paste setup. Identical
- * behavior to the split files in backend/apps-script/ (one global scope).
- * Prefer editing the split files, then re-bundle.
- * ----------------------------------------------------------------------------
+ * Every backend file concatenated for one-paste setup.
  */
 
 
@@ -54,7 +50,9 @@ var SCHEMA = {
 
   // Events = the columns inside a topic. position orders them left→right.
   // side_required = 'yes' means the grader must pick a side at session start.
-  'Events':           ['event_id', 'topic_id', 'name', 'position', 'side_required', 'active'],
+  // grade_style (added at the END so existing sheets stay aligned) = 'group'
+  // (build groups, default) or 'individual' (go down the roster, pass/fail).
+  'Events':           ['event_id', 'topic_id', 'name', 'position', 'side_required', 'active', 'grade_style'],
 
   // The side/role options for an event (e.g. Plug → Engineer, Captain).
   'EventSides':       ['side_id', 'event_id', 'name', 'active'],

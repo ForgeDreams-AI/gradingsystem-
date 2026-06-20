@@ -42,7 +42,9 @@ var SCHEMA = {
 
   // Events = the columns inside a topic. position orders them left→right.
   // side_required = 'yes' means the grader must pick a side at session start.
-  'Events':           ['event_id', 'topic_id', 'name', 'position', 'side_required', 'active'],
+  // grade_style (added at the END so existing sheets stay aligned) = 'group'
+  // (build groups, default) or 'individual' (go down the roster, pass/fail).
+  'Events':           ['event_id', 'topic_id', 'name', 'position', 'side_required', 'active', 'grade_style'],
 
   // The side/role options for an event (e.g. Plug → Engineer, Captain).
   'EventSides':       ['side_id', 'event_id', 'name', 'active'],

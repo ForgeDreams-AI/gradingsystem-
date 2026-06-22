@@ -94,10 +94,10 @@ var DEFAULT_SETTINGS = [
   ['band_yellow_min',       '70',                      'Pass% at or above this (and below green) = YELLOW; below = RED'],
   ['daily_min_pct',         '75',                      'Daily minimum a recruit should stay above'],
   ['weekly_min_pct',        '80',                      'Weekly minimum a recruit should stay above'],
-  ['memo_counts_as',        'fail',                    'How a MEMO counts in scoring: fail | pass | neutral'],
+  ['memo_threshold_pct',    '65',                      'End of week: a recruit BELOW this weekly % gets a MEMO (captain notified)'],
+  ['peer_review_threshold_pct', '50',                  'End of week: a recruit BELOW this weekly % needs a PEER REVIEW (captain notified)'],
   ['legend_pass',           'PASS — recruit met the standard for the event on this attempt.', 'Printed on every report'],
   ['legend_fail',           'FAIL — recruit did not meet the standard; see reason(s).',        'Printed on every report'],
-  ['legend_memo',           'MEMO — noted concern with a written note; counts as a fail in scoring.', 'Printed on every report'],
   ['sender_name',           'Grading System',          'From-name shown on report emails']
 ];
 

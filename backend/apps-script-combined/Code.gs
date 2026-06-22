@@ -101,10 +101,10 @@ var DEFAULT_SETTINGS = [
   ['band_yellow_min',       '70',                      'Pass% at or above this (and below green) = YELLOW; below = RED'],
   ['daily_min_pct',         '75',                      'Daily minimum a recruit should stay above'],
   ['weekly_min_pct',        '80',                      'Weekly minimum a recruit should stay above'],
-  ['memo_counts_as',        'fail',                    'How a MEMO counts in scoring: fail | pass | neutral'],
+  ['memo_threshold_pct',    '65',                      'End of week: a recruit BELOW this weekly % gets a MEMO (captain notified)'],
+  ['peer_review_threshold_pct', '50',                  'End of week: a recruit BELOW this weekly % needs a PEER REVIEW (captain notified)'],
   ['legend_pass',           'PASS — recruit met the standard for the event on this attempt.', 'Printed on every report'],
   ['legend_fail',           'FAIL — recruit did not meet the standard; see reason(s).',        'Printed on every report'],
-  ['legend_memo',           'MEMO — noted concern with a written note; counts as a fail in scoring.', 'Printed on every report'],
   ['sender_name',           'Grading System',          'From-name shown on report emails']
 ];
 
@@ -949,11 +949,14 @@ function legendHtml_(s) {
   var dot = function (c) {
     return '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:' + c + ';margin-right:6px"></span>';
   };
+  var memoPct = settingNum_(s, 'memo_threshold_pct', 65);
+  var peerPct = settingNum_(s, 'peer_review_threshold_pct', 50);
   return '<div style="border-top:1px solid #e5e7eb;margin-top:16px;padding-top:10px;font-size:11px;color:#6b7280">' +
     '<b style="text-transform:uppercase">Legend</b><br>' +
     dot('#16a34a') + esc_(setting_(s, 'legend_pass', '')) + '<br>' +
     dot('#dc2626') + esc_(setting_(s, 'legend_fail', '')) + '<br>' +
-    dot('#f59e0b') + esc_(setting_(s, 'legend_memo', '')) +
+    dot('#f59e0b') + 'MEMO — issued automatically when a recruit finishes the week below ' + memoPct + '%.<br>' +
+    dot('#b91c1c') + 'PEER REVIEW — required when a recruit finishes the week below ' + peerPct + '%.' +
     '</div>';
 }
 
@@ -1027,6 +1030,26 @@ function companyReportHtml_(title, companies, ctx, weekEvals, showLowFlag, weekS
     if (!coEvals.length) {
       h += '<div style="color:#9ca3af;font-size:13px">No data this week.</div>';
       return;
+    }
+
+    // ----- ACTION NEEDED: weekly memo / peer-review flags (for the captain) -----
+    var memoPct = settingNum_(s, 'memo_threshold_pct', 65);
+    var peerPct = settingNum_(s, 'peer_review_threshold_pct', 50);
+    var memos = [], peers = [];
+    recruits.forEach(function (r) {
+      var evs = coEvals.filter(function (e) { return String(e.recruit_id) === String(r.recruit_id); });
+      if (!evs.length) return;
+      var pct = scoreRows_(evs, s).pct;
+      var nm = r.first_name + ' ' + r.last_name + ' (' + pct + '%)';
+      if (pct < peerPct) peers.push(nm);
+      else if (pct < memoPct) memos.push(nm);
+    });
+    if (peers.length || memos.length) {
+      h += '<div style="border:1px solid #fecaca;background:#fef2f2;border-radius:8px;padding:10px 12px;margin-bottom:12px">';
+      h += '<div style="font-weight:bold;color:#b91c1c;font-size:13px;text-transform:uppercase">&#9888; Action needed this week</div>';
+      if (peers.length) h += '<div style="font-size:13px;margin-top:6px;color:#7f1d1d"><b>Peer review (below ' + peerPct + '%):</b> ' + esc_(peers.join(', ')) + '</div>';
+      if (memos.length) h += '<div style="font-size:13px;margin-top:6px;color:#92400e"><b>Memo (below ' + memoPct + '%):</b> ' + esc_(memos.join(', ')) + '</div>';
+      h += '</div>';
     }
 
     // Recruit summary table.

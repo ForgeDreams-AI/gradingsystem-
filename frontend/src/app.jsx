@@ -615,7 +615,6 @@ function GradeScreen({ config, group, groupNumber, onEdit, onSwap, onSubmit, bus
             <div className="mt-6 space-y-3">
               <BigButton color="green" onClick={() => setOutcome("pass")}>PASS</BigButton>
               <BigButton color="red" onClick={() => setOutcome("fail")}>FAIL</BigButton>
-              <BigButton color="amber" onClick={() => setOutcome("memo")}>MEMO</BigButton>
             </div>
           </>
         ) : (
@@ -712,7 +711,6 @@ function IndividualGradeScreen({ config, topic, companyIds, onSubmitItem, onHome
             <div className="mt-6 space-y-3">
               <BigButton color="green" onClick={() => tap("pass")} disabled={busy}>PASS</BigButton>
               <BigButton color="red" onClick={() => tap("fail")} disabled={busy}>FAIL</BigButton>
-              <BigButton color="amber" onClick={() => tap("memo")} disabled={busy}>MEMO</BigButton>
             </div>
           </>
         ) : (

@@ -1,7 +1,9 @@
 # Presentation Pack — Fire Department Grading System
 
 Everything you need to present in ~10 minutes. Slides/visuals are in
-`docs/real-app-poster.pdf` (and `mockups/real-app-poster.png`).
+`docs/real-app-poster.pdf` (and `mockups/real-app-poster.png`). Sample reports
+for all three levels are in `docs/Report-Samples.pdf` (and
+`mockups/report-samples-poster.png`).
 
 ---
 
@@ -55,8 +57,10 @@ guaranteed fallback. Have it open in a tab.
 6. **Build groups** — tap a name into Quick Attack, tap **Plug**, tap another
    name. *"Cross-company is fine. ✕ to swap. Add a company mid-session here too."*
    Tap **Add group** to queue a second pair. *"Build as many as you want."*
-7. **Grade** — **Start Grading**. Big **Pass / Fail / Memo**. Tap **Fail** →
-   *"reason buttons appear, specific to this event."* Submit.
+7. **Grade** — **Start Grading**. Just two big buttons: **Pass / Fail**. Tap
+   **Fail** → *"reason buttons appear, specific to this event."* Submit.
+   *"Memos and peer reviews aren't buttons anymore — they happen automatically
+   from the weekly score (see below), so grading stays one tap."*
 8. **Show it's saved** — *(if online)* open the Google Sheet's **Evaluations**
    tab — *"immutable rows, attempt numbers, who/when. Never overwritten."*
 9. **Individual mode** — tap **🏠 Home → Start grading → SCBA**. *"Some events
@@ -68,11 +72,29 @@ guaranteed fallback. Have it open in a tab.
 
 ## 3) The payoff — the report (1 min)
 
-- Show the emailed **PDF** (from `runReportsNow()` or the sample in
-  `docs/Grading-System-Overview.pdf`).
+- Show **`docs/Report-Samples.pdf`** — the three levels side by side (recruit,
+  captain, higher-up), or the live emailed **PDF** from `runReportsNow()`.
 - *"At 1 PM each day: every recruit gets their own results, each captain gets
   their company, each chief gets everything — color-coded green/yellow/red, with
   a 'who needs reps' list and an alert if someone's under 3 attempts."*
+- Point at the captain column: *"And at the end of the week, the report tells the
+  captain exactly who needs a memo or peer review — with a one-tap link to send
+  it."*
+
+## 3b) Memos & peer reviews — the sign-and-return loop (1 min)
+
+> This replaced the old "Memo" grade button. Nobody taps a memo during grading —
+> it's a *result* of the week's scores, so it can't be gamed or forgotten.
+
+- *"It's all threshold-driven and the thresholds are editable in Settings:"*
+  - End of week **below 65%** → **Memo** (default; `memo_threshold_pct`).
+  - End of week **below 50%** → **Peer review** (default; `peer_review_threshold_pct`).
+- **Captain** opens the link in their report → picks the flagged recruit, types a
+  note → **Send for signature**.
+- **Recruit** gets an email → opens it, **checks the box + types their name** to
+  sign → it returns to the captain and is **stored by engine company + name** in
+  the **Reviews** tab.
+- *"Whole loop is email links — no logins, works on any phone."*
 
 ## 4) Close
 
@@ -89,6 +111,10 @@ guaranteed fallback. Have it open in a tab.
   swap on the grade screen, edit groups mid-session, repeats record as new
   attempts. Already-saved results never change.
 - **"Who can see what?"** Recruit = self, captain = their company, chief = all.
+- **"How do memos / peer reviews work?"** Automatic from the weekly score —
+  under 65% = memo, under 50% = peer review (both thresholds editable). The
+  captain fills a short form, the recruit signs it by email (checkbox + name),
+  and it's stored by engine company + name. No grade button, nothing to forget.
 - **"What does it cost / where does it run?"** Google Sheet (data) + Apps Script
   (API + emailer) + GitHub Pages (app). All free tiers.
 - **"Can we change the events/scoring?"** Yes — all in the in-app admin.

@@ -21,6 +21,17 @@
  */
 function doGet(e) {
   try {
+    // Memo / peer-review web pages (HTML, not JSON) — see 15_Reviews.gs.
+    var page = e && e.parameter && e.parameter.page;
+    if (page) {
+      switch (page) {
+        case 'captainForm': return captainFormPage_(e.parameter);
+        case 'doCreate':    return createReview_(e.parameter);
+        case 'sign':        return signPage_(e.parameter);
+        case 'doSign':      return signReview_(e.parameter);
+        default:            return HtmlService.createHtmlOutput('Unknown page.');
+      }
+    }
     var action = (e && e.parameter && e.parameter.action) || 'ping';
     switch (action) {
       case 'ping':

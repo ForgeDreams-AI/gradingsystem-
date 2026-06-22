@@ -281,6 +281,11 @@ function companyReportHtml_(title, companies, ctx, weekEvals, showLowFlag, weekS
       h += '<div style="font-weight:bold;color:#b91c1c;font-size:13px;text-transform:uppercase">&#9888; Action needed this week</div>';
       if (peers.length) h += '<div style="font-size:13px;margin-top:6px;color:#7f1d1d"><b>Peer review (below ' + peerPct + '%):</b> ' + esc_(peers.join(', ')) + '</div>';
       if (memos.length) h += '<div style="font-size:13px;margin-top:6px;color:#92400e"><b>Memo (below ' + memoPct + '%):</b> ' + esc_(memos.join(', ')) + '</div>';
+      // Captain link to fill out + send the memo/peer-review form for signature.
+      if (co.captain_id) {
+        var formUrl = ScriptApp.getService().getUrl() + '?page=captainForm&cap=' + encodeURIComponent(co.captain_id);
+        h += '<div style="margin-top:10px"><a href="' + formUrl + '" style="display:inline-block;padding:9px 14px;background:#b91c1c;color:#fff;border-radius:7px;text-decoration:none;font-weight:bold;font-size:13px">Create &amp; send form &rarr;</a></div>';
+      }
       h += '</div>';
     }
 

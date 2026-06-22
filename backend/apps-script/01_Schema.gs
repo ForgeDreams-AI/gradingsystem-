@@ -73,7 +73,13 @@ var SCHEMA = {
   'EvalReasons':      ['id', 'eval_id', 'reason_id', 'reason_text'],
 
   // Log of every report email we send (also used to avoid double-sending).
-  'SendLog':          ['id', 'run_date', 'recipient_type', 'recipient_id', 'email', 'status', 'detail', 'sent_at']
+  'SendLog':          ['id', 'run_date', 'recipient_type', 'recipient_id', 'email', 'status', 'detail', 'sent_at'],
+
+  // Memos / peer-reviews: captain creates → recruit signs → stored here, keyed
+  // by engine company + name. type = 'memo' | 'peer_review'.
+  'Reviews':          ['review_id', 'type', 'recruit_id', 'recruit_name', 'company_id', 'company_name',
+                       'captain_id', 'captain_email', 'recruit_email', 'week_start', 'score_pct',
+                       'captain_notes', 'status', 'signed_name', 'signed_at', 'created_at']
 };
 
 /**
